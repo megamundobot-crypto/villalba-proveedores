@@ -54,14 +54,33 @@ export default function GenerarTXTPage() {
   async function loadData() {
     setLoading(true)
 
-    // Cargar facturas pendientes de la empresa seleccionada
+    // Cargar facturas pendientes de la empresa seleccionada (usando tabla directa)
     const { data: facturasData } = await supabase
-      .from('v_facturas_pendientes')
-      .select('*')
+      .from('facturas')
+      .select('*, proveedores(nombre)')
       .eq('empresa', empresaOrigen)
-      .order('proveedor_nombre')
+      .in('estado', ['pendiente', 'parcial'])
 
-    if (facturasData) setFacturasPendientes(facturasData)
+    // Cargar pagos para calcular saldos
+    const { data: pagosData } = await supabase
+      .from('pagos')
+      .select('factura_id, monto')
+
+    const pagosPorFactura: Record<number, number> = {}
+    if (pagosData) {
+      pagosData.forEach(p => {
+        pagosPorFactura[p.factura_id] = (pagosPorFactura[p.factura_id] || 0) + Number(p.monto)
+      })
+    }
+
+    if (facturasData) {
+      const facturasConSaldo = facturasData.map((f: any) => ({
+        ...f,
+        proveedor_nombre: f.proveedores?.nombre,
+        saldo_pendiente: f.monto_total - (pagosPorFactura[f.id] || 0)
+      })).sort((a: any, b: any) => (a.proveedor_nombre || '').localeCompare(b.proveedor_nombre || ''))
+      setFacturasPendientes(facturasConSaldo)
+    }
 
     // Cargar configuración de CBU origen
     const { data: configData } = await supabase

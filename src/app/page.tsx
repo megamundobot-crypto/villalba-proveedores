@@ -19,38 +19,81 @@ export default function Dashboard() {
   async function loadData() {
     setLoading(true)
 
-    // Cargar saldos por proveedor
-    const { data: saldosData } = await supabase
-      .from('v_saldos_proveedores')
-      .select('*')
-      .order('saldo_total', { ascending: false })
+    // Cargar facturas y calcular saldos manualmente
+    const { data: facturasData } = await supabase
+      .from('facturas')
+      .select('*, proveedores(nombre)')
+      .in('estado', ['pendiente', 'parcial'])
 
-    if (saldosData) {
-      setSaldos(saldosData)
-      const vh = saldosData.reduce((sum, s) => sum + Number(s.saldo_vh), 0)
-      const vc = saldosData.reduce((sum, s) => sum + Number(s.saldo_vc), 0)
+    const { data: pagosData } = await supabase
+      .from('pagos')
+      .select('factura_id, monto')
+
+    if (facturasData) {
+      // Calcular pagos por factura
+      const pagosPorFactura: Record<number, number> = {}
+      if (pagosData) {
+        pagosData.forEach(p => {
+          pagosPorFactura[p.factura_id] = (pagosPorFactura[p.factura_id] || 0) + Number(p.monto)
+        })
+      }
+
+      // Calcular saldos por proveedor
+      const saldosPorProveedor: Record<number, { id: number, nombre: string, saldo_vh: number, saldo_vc: number, saldo_total: number }> = {}
+
+      facturasData.forEach((f: any) => {
+        const pagado = pagosPorFactura[f.id] || 0
+        const saldo = f.monto_total - pagado
+        const provId = f.proveedor_id
+        const provNombre = f.proveedores?.nombre || 'Sin nombre'
+
+        if (!saldosPorProveedor[provId]) {
+          saldosPorProveedor[provId] = { id: provId, nombre: provNombre, saldo_vh: 0, saldo_vc: 0, saldo_total: 0 }
+        }
+
+        if (f.empresa === 'VH') {
+          saldosPorProveedor[provId].saldo_vh += saldo
+        } else {
+          saldosPorProveedor[provId].saldo_vc += saldo
+        }
+        saldosPorProveedor[provId].saldo_total += saldo
+      })
+
+      const saldosArray = Object.values(saldosPorProveedor).sort((a, b) => b.saldo_total - a.saldo_total)
+      setSaldos(saldosArray)
+
+      const vh = saldosArray.reduce((sum, s) => sum + s.saldo_vh, 0)
+      const vc = saldosArray.reduce((sum, s) => sum + s.saldo_vc, 0)
       setTotales({ vh, vc, total: vh + vc })
+
+      // Calcular alertas
+      const hoy = new Date()
+      let verde = 0, amarillo = 0, rojo = 0
+      facturasData.forEach((f: any) => {
+        const fecha = new Date(f.fecha)
+        const dias = Math.floor((hoy.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24))
+        if (dias <= 30) verde++
+        else if (dias <= 40) amarillo++
+        else rojo++
+      })
+      setAlertas({ verde, amarillo, rojo })
     }
 
     // Cargar cuenta interna
     const { data: cuentaData } = await supabase
-      .from('v_cuenta_interna_resumen')
+      .from('cuenta_interna')
       .select('*')
 
     if (cuentaData) {
-      setCuentaInterna(cuentaData)
-    }
+      const vhDebeVc = cuentaData.reduce((sum, c) => sum + (c.pagado ? 0 : Number(c.debe_vh)), 0)
+      const vcDebeVh = cuentaData.reduce((sum, c) => sum + (c.pagado ? 0 : Number(c.debe_vc)), 0)
+      const vhPagado = cuentaData.reduce((sum, c) => sum + (c.pagado ? Number(c.debe_vh) : 0), 0)
+      const vcPagado = cuentaData.reduce((sum, c) => sum + (c.pagado ? Number(c.debe_vc) : 0), 0)
 
-    // Cargar alertas
-    const { data: facturasData } = await supabase
-      .from('v_facturas_pendientes')
-      .select('alerta')
-
-    if (facturasData) {
-      const verde = facturasData.filter(f => f.alerta === 'verde').length
-      const amarillo = facturasData.filter(f => f.alerta === 'amarillo').length
-      const rojo = facturasData.filter(f => f.alerta === 'rojo').length
-      setAlertas({ verde, amarillo, rojo })
+      setCuentaInterna([
+        { concepto: 'VH debe a VC', monto_pendiente: vhDebeVc, monto_pagado: vhPagado, monto_total: vhDebeVc + vhPagado },
+        { concepto: 'VC debe a VH', monto_pendiente: vcDebeVh, monto_pagado: vcPagado, monto_total: vcDebeVh + vcPagado }
+      ])
     }
 
     setLoading(false)

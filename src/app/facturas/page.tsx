@@ -47,10 +47,11 @@ export default function FacturasPage() {
 
     if (provData) setProveedores(provData)
 
-    // Cargar facturas con filtros
+    // Cargar facturas con filtros (usando tabla directa en lugar de vista)
     let query = supabase
-      .from('v_facturas_pendientes')
-      .select('*')
+      .from('facturas')
+      .select('*, proveedores(nombre)')
+      .in('estado', ['pendiente', 'parcial'])
 
     if (filtroEmpresa) {
       query = query.eq('empresa', filtroEmpresa)
@@ -66,7 +67,39 @@ export default function FacturasPage() {
 
     const { data: factData } = await query
 
-    if (factData) setFacturas(factData)
+    // Cargar pagos para calcular saldos
+    const { data: pagosData } = await supabase
+      .from('pagos')
+      .select('factura_id, monto')
+
+    const pagosPorFactura: Record<number, number> = {}
+    if (pagosData) {
+      pagosData.forEach(p => {
+        pagosPorFactura[p.factura_id] = (pagosPorFactura[p.factura_id] || 0) + Number(p.monto)
+      })
+    }
+
+    if (factData) {
+      const hoy = new Date()
+      const facturasConDatos = factData.map((f: any) => {
+        const fecha = new Date(f.fecha)
+        const dias = Math.floor((hoy.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24))
+        const totalPagado = pagosPorFactura[f.id] || 0
+        let alerta: 'verde' | 'amarillo' | 'rojo' = 'verde'
+        if (dias > 40) alerta = 'rojo'
+        else if (dias > 30) alerta = 'amarillo'
+
+        return {
+          ...f,
+          proveedor_nombre: f.proveedores?.nombre,
+          alerta,
+          dias_antiguedad: dias,
+          total_pagado: totalPagado,
+          saldo_pendiente: f.monto_total - totalPagado
+        }
+      })
+      setFacturas(facturasConDatos)
+    }
     setLoading(false)
   }
 

@@ -73,13 +73,32 @@ function PagosContent() {
       setPagos(pagosFormateados)
     }
 
-    // Cargar facturas pendientes
+    // Cargar facturas pendientes (usando tabla directa)
     const { data: facturasData } = await supabase
-      .from('v_facturas_pendientes')
-      .select('*')
-      .order('proveedor_nombre')
+      .from('facturas')
+      .select('*, proveedores(nombre)')
+      .in('estado', ['pendiente', 'parcial'])
 
-    if (facturasData) setFacturasPendientes(facturasData)
+    // Cargar pagos para calcular saldos
+    const { data: allPagosData } = await supabase
+      .from('pagos')
+      .select('factura_id, monto')
+
+    const pagosPorFactura: Record<number, number> = {}
+    if (allPagosData) {
+      allPagosData.forEach(p => {
+        pagosPorFactura[p.factura_id] = (pagosPorFactura[p.factura_id] || 0) + Number(p.monto)
+      })
+    }
+
+    if (facturasData) {
+      const facturasConSaldo = facturasData.map((f: any) => ({
+        ...f,
+        proveedor_nombre: f.proveedores?.nombre,
+        saldo_pendiente: f.monto_total - (pagosPorFactura[f.id] || 0)
+      })).sort((a: any, b: any) => (a.proveedor_nombre || '').localeCompare(b.proveedor_nombre || ''))
+      setFacturasPendientes(facturasConSaldo)
+    }
 
     setLoading(false)
   }
