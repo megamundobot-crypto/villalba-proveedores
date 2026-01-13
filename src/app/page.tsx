@@ -2,24 +2,59 @@
 
 import { useEffect, useState } from 'react'
 import { supabase, SaldoProveedor, CuentaInternaResumen } from '@/lib/supabase'
-import { Building2, Users, AlertTriangle, TrendingDown, ArrowRightLeft } from 'lucide-react'
+import { Building2, Users, AlertTriangle, TrendingDown, ArrowRightLeft, Search, FileText, CreditCard, Download, ChevronRight, Filter } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Dashboard() {
   const [saldos, setSaldos] = useState<SaldoProveedor[]>([])
+  const [saldosFiltrados, setSaldosFiltrados] = useState<SaldoProveedor[]>([])
   const [cuentaInterna, setCuentaInterna] = useState<CuentaInternaResumen[]>([])
   const [loading, setLoading] = useState(true)
   const [totales, setTotales] = useState({ vh: 0, vc: 0, total: 0 })
   const [alertas, setAlertas] = useState({ verde: 0, amarillo: 0, rojo: 0 })
 
+  // Filtros
+  const [busqueda, setBusqueda] = useState('')
+  const [filtroEmpresa, setFiltroEmpresa] = useState<'todos' | 'VH' | 'VC'>('todos')
+  const [ordenar, setOrdenar] = useState<'total' | 'nombre' | 'vh' | 'vc'>('total')
+
   useEffect(() => {
     loadData()
   }, [])
 
+  useEffect(() => {
+    let filtered = [...saldos]
+
+    // Filtro por búsqueda
+    if (busqueda) {
+      filtered = filtered.filter(s =>
+        s.nombre.toLowerCase().includes(busqueda.toLowerCase())
+      )
+    }
+
+    // Filtro por empresa
+    if (filtroEmpresa === 'VH') {
+      filtered = filtered.filter(s => s.saldo_vh > 0)
+    } else if (filtroEmpresa === 'VC') {
+      filtered = filtered.filter(s => s.saldo_vc > 0)
+    }
+
+    // Ordenamiento
+    filtered.sort((a, b) => {
+      switch (ordenar) {
+        case 'nombre': return a.nombre.localeCompare(b.nombre)
+        case 'vh': return b.saldo_vh - a.saldo_vh
+        case 'vc': return b.saldo_vc - a.saldo_vc
+        default: return b.saldo_total - a.saldo_total
+      }
+    })
+
+    setSaldosFiltrados(filtered)
+  }, [saldos, busqueda, filtroEmpresa, ordenar])
+
   async function loadData() {
     setLoading(true)
 
-    // Cargar facturas y calcular saldos manualmente
     const { data: facturasData } = await supabase
       .from('facturas')
       .select('*, proveedores(nombre)')
@@ -30,7 +65,6 @@ export default function Dashboard() {
       .select('factura_id, monto')
 
     if (facturasData) {
-      // Calcular pagos por factura
       const pagosPorFactura: Record<number, number> = {}
       if (pagosData) {
         pagosData.forEach(p => {
@@ -38,7 +72,6 @@ export default function Dashboard() {
         })
       }
 
-      // Calcular saldos por proveedor
       const saldosPorProveedor: Record<number, { id: number, nombre: string, saldo_vh: number, saldo_vc: number, saldo_total: number }> = {}
 
       facturasData.forEach((f: any) => {
@@ -66,7 +99,6 @@ export default function Dashboard() {
       const vc = saldosArray.reduce((sum, s) => sum + s.saldo_vc, 0)
       setTotales({ vh, vc, total: vh + vc })
 
-      // Calcular alertas
       const hoy = new Date()
       let verde = 0, amarillo = 0, rojo = 0
       facturasData.forEach((f: any) => {
@@ -79,12 +111,11 @@ export default function Dashboard() {
       setAlertas({ verde, amarillo, rojo })
     }
 
-    // Cargar cuenta interna
     const { data: cuentaData } = await supabase
       .from('cuenta_interna')
       .select('*')
 
-    if (cuentaData) {
+    if (cuentaData && cuentaData.length > 0) {
       const vhDebeVc = cuentaData.reduce((sum, c) => sum + (c.pagado ? 0 : Number(c.debe_vh)), 0)
       const vcDebeVh = cuentaData.reduce((sum, c) => sum + (c.pagado ? 0 : Number(c.debe_vc)), 0)
       const vhPagado = cuentaData.reduce((sum, c) => sum + (c.pagado ? Number(c.debe_vh) : 0), 0)
@@ -108,146 +139,343 @@ export default function Dashboard() {
     }).format(amount)
   }
 
+  const formatMoneyCompact = (amount: number) => {
+    if (amount >= 1000000000) {
+      return `$${(amount / 1000000000).toFixed(1)}B`
+    }
+    if (amount >= 1000000) {
+      return `$${(amount / 1000000).toFixed(1)}M`
+    }
+    return formatMoney(amount)
+  }
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-xl text-gray-600">Cargando...</div>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-600 font-medium">Cargando datos...</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <header className="bg-blue-900 text-white p-4 shadow-lg">
-        <div className="container mx-auto">
-          <h1 className="text-2xl font-bold">Sistema de Proveedores</h1>
-          <p className="text-blue-200">Villalba Hermanos SRL / Villalba Cristino</p>
+    <div className="min-h-screen bg-slate-50">
+      {/* Header Premium */}
+      <header className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white shadow-xl">
+        <div className="container mx-auto px-6 py-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Sistema de Gestión</h1>
+              <p className="text-slate-400 text-sm mt-0.5">Villalba Hermanos SRL • Villalba Cristino</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 rounded-full text-xs font-medium border border-emerald-500/30">
+                ● Sistema Activo
+              </span>
+            </div>
+          </div>
         </div>
       </header>
 
-      <main className="container mx-auto p-4">
-        {/* Cards de resumen */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {/* Total General */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
+      <main className="container mx-auto px-6 py-8">
+        {/* Cards de Resumen Premium */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+          {/* Deuda Total */}
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 text-white shadow-xl card-hover">
+            <div className="flex items-start justify-between">
               <div>
-                <p className="text-gray-500 text-sm">Deuda Total</p>
-                <p className="text-2xl font-bold text-gray-800">{formatMoney(totales.total)}</p>
+                <p className="text-slate-400 text-sm font-medium">Deuda Total</p>
+                <p className="text-3xl font-bold mt-2 tracking-tight">{formatMoneyCompact(totales.total)}</p>
+                <p className="text-slate-500 text-xs mt-1">{formatMoney(totales.total)}</p>
               </div>
-              <TrendingDown className="h-10 w-10 text-red-500" />
+              <div className="p-3 bg-white/10 rounded-xl">
+                <TrendingDown className="h-6 w-6 text-slate-300" />
+              </div>
             </div>
           </div>
 
-          {/* VH */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
+          {/* Villalba Hermanos */}
+          <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-6 text-white shadow-xl card-hover">
+            <div className="flex items-start justify-between">
               <div>
-                <p className="text-gray-500 text-sm">Villalba Hermanos</p>
-                <p className="text-2xl font-bold text-blue-800">{formatMoney(totales.vh)}</p>
+                <p className="text-blue-200 text-sm font-medium">Villalba Hermanos</p>
+                <p className="text-3xl font-bold mt-2 tracking-tight">{formatMoneyCompact(totales.vh)}</p>
+                <p className="text-blue-300/70 text-xs mt-1">{formatMoney(totales.vh)}</p>
               </div>
-              <Building2 className="h-10 w-10 text-blue-500" />
+              <div className="p-3 bg-white/20 rounded-xl">
+                <Building2 className="h-6 w-6" />
+              </div>
             </div>
           </div>
 
-          {/* VC */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
+          {/* Villalba Cristino */}
+          <div className="bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-2xl p-6 text-white shadow-xl card-hover">
+            <div className="flex items-start justify-between">
               <div>
-                <p className="text-gray-500 text-sm">Villalba Cristino</p>
-                <p className="text-2xl font-bold text-green-800">{formatMoney(totales.vc)}</p>
+                <p className="text-emerald-200 text-sm font-medium">Villalba Cristino</p>
+                <p className="text-3xl font-bold mt-2 tracking-tight">{formatMoneyCompact(totales.vc)}</p>
+                <p className="text-emerald-300/70 text-xs mt-1">{formatMoney(totales.vc)}</p>
               </div>
-              <Building2 className="h-10 w-10 text-green-500" />
+              <div className="p-3 bg-white/20 rounded-xl">
+                <Building2 className="h-6 w-6" />
+              </div>
             </div>
           </div>
 
-          {/* Alertas */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
+          {/* Alertas de Facturas */}
+          <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200 card-hover">
+            <div className="flex items-start justify-between">
               <div>
-                <p className="text-gray-500 text-sm">Facturas Pendientes</p>
-                <div className="flex gap-2 mt-1">
-                  <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-sm">{alertas.verde}</span>
-                  <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-sm">{alertas.amarillo}</span>
-                  <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-sm">{alertas.rojo}</span>
+                <p className="text-slate-500 text-sm font-medium">Estado de Facturas</p>
+                <div className="flex items-center gap-3 mt-3">
+                  <div className="text-center">
+                    <span className="block text-2xl font-bold text-emerald-600">{alertas.verde}</span>
+                    <span className="text-xs text-slate-500">Al día</span>
+                  </div>
+                  <div className="w-px h-10 bg-slate-200"></div>
+                  <div className="text-center">
+                    <span className="block text-2xl font-bold text-amber-500">{alertas.amarillo}</span>
+                    <span className="text-xs text-slate-500">30-40d</span>
+                  </div>
+                  <div className="w-px h-10 bg-slate-200"></div>
+                  <div className="text-center">
+                    <span className="block text-2xl font-bold text-red-500">{alertas.rojo}</span>
+                    <span className="text-xs text-slate-500">+40d</span>
+                  </div>
                 </div>
               </div>
-              <AlertTriangle className="h-10 w-10 text-yellow-500" />
+              <div className="p-3 bg-amber-50 rounded-xl">
+                <AlertTriangle className="h-6 w-6 text-amber-500" />
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Cuenta Interna */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <ArrowRightLeft className="h-5 w-5" />
-            Cuenta Interna entre Empresas
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {cuentaInterna.map((cuenta, idx) => (
-              <div key={idx} className={`p-4 rounded-lg ${cuenta.concepto.includes('VH debe') ? 'bg-blue-100 border border-blue-300' : 'bg-green-100 border border-green-300'}`}>
-                <p className="font-semibold text-gray-800">{cuenta.concepto}</p>
-                <p className={`text-2xl font-bold ${cuenta.concepto.includes('VH debe') ? 'text-blue-800' : 'text-green-800'}`}>{formatMoney(Number(cuenta.monto_pendiente))}</p>
-                <p className="text-sm text-gray-700">Pagado: {formatMoney(Number(cuenta.monto_pagado))}</p>
+        {/* Cuenta Interna Premium */}
+        {(cuentaInterna.length > 0 && (cuentaInterna[0].monto_pendiente > 0 || cuentaInterna[1].monto_pendiente > 0)) && (
+          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 mb-8">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2 bg-violet-100 rounded-lg">
+                <ArrowRightLeft className="h-5 w-5 text-violet-600" />
               </div>
-            ))}
+              <h2 className="text-lg font-semibold text-slate-800">Cuenta Interna entre Empresas</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {cuentaInterna.map((cuenta, idx) => (
+                <div
+                  key={idx}
+                  className={`p-5 rounded-xl border-2 ${
+                    cuenta.concepto.includes('VH debe')
+                      ? 'bg-blue-50 border-blue-200'
+                      : 'bg-emerald-50 border-emerald-200'
+                  }`}
+                >
+                  <p className="font-medium text-slate-700">{cuenta.concepto}</p>
+                  <p className={`text-2xl font-bold mt-1 ${
+                    cuenta.concepto.includes('VH debe') ? 'text-blue-700' : 'text-emerald-700'
+                  }`}>
+                    {formatMoney(Number(cuenta.monto_pendiente))}
+                  </p>
+                  {Number(cuenta.monto_pagado) > 0 && (
+                    <p className="text-sm text-slate-500 mt-1">
+                      Pagado: {formatMoney(Number(cuenta.monto_pagado))}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
+        )}
+
+        {/* Navegación Rápida Premium */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <Link href="/proveedores" className="group bg-white rounded-xl p-5 shadow-md border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
+                  <Users className="h-5 w-5 text-blue-600" />
+                </div>
+                <span className="font-semibold text-slate-700">Proveedores</span>
+              </div>
+              <ChevronRight className="h-5 w-5 text-slate-400 group-hover:text-blue-500 transition-colors" />
+            </div>
+          </Link>
+
+          <Link href="/facturas" className="group bg-white rounded-xl p-5 shadow-md border border-slate-200 hover:border-emerald-300 hover:shadow-lg transition-all">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-100 rounded-lg group-hover:bg-emerald-200 transition-colors">
+                  <FileText className="h-5 w-5 text-emerald-600" />
+                </div>
+                <span className="font-semibold text-slate-700">Facturas</span>
+              </div>
+              <ChevronRight className="h-5 w-5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+            </div>
+          </Link>
+
+          <Link href="/pagos" className="group bg-white rounded-xl p-5 shadow-md border border-slate-200 hover:border-violet-300 hover:shadow-lg transition-all">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-violet-100 rounded-lg group-hover:bg-violet-200 transition-colors">
+                  <CreditCard className="h-5 w-5 text-violet-600" />
+                </div>
+                <span className="font-semibold text-slate-700">Pagos</span>
+              </div>
+              <ChevronRight className="h-5 w-5 text-slate-400 group-hover:text-violet-500 transition-colors" />
+            </div>
+          </Link>
+
+          <Link href="/generar-txt" className="group bg-white rounded-xl p-5 shadow-md border border-slate-200 hover:border-amber-300 hover:shadow-lg transition-all">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-100 rounded-lg group-hover:bg-amber-200 transition-colors">
+                  <Download className="h-5 w-5 text-amber-600" />
+                </div>
+                <span className="font-semibold text-slate-700">Generar TXT</span>
+              </div>
+              <ChevronRight className="h-5 w-5 text-slate-400 group-hover:text-amber-500 transition-colors" />
+            </div>
+          </Link>
         </div>
 
-        {/* Navegación rápida */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <Link href="/proveedores" className="bg-white rounded-lg shadow p-4 text-center hover:bg-gray-50 transition">
-            <Users className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-            <span className="font-medium">Proveedores</span>
-          </Link>
-          <Link href="/facturas" className="bg-white rounded-lg shadow p-4 text-center hover:bg-gray-50 transition">
-            <svg className="h-8 w-8 mx-auto mb-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <span className="font-medium">Facturas</span>
-          </Link>
-          <Link href="/pagos" className="bg-white rounded-lg shadow p-4 text-center hover:bg-gray-50 transition">
-            <svg className="h-8 w-8 mx-auto mb-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-            <span className="font-medium">Pagos</span>
-          </Link>
-          <Link href="/generar-txt" className="bg-white rounded-lg shadow p-4 text-center hover:bg-gray-50 transition">
-            <svg className="h-8 w-8 mx-auto mb-2 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            <span className="font-medium">Generar TXT</span>
-          </Link>
-        </div>
+        {/* Tabla de Proveedores con Filtros */}
+        <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+          {/* Header de tabla con filtros */}
+          <div className="p-5 border-b border-slate-200 bg-slate-50">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-slate-800">Saldos por Proveedor</h2>
 
-        {/* Top 10 Proveedores con más deuda */}
-        <div className="bg-white rounded-lg shadow">
-          <div className="p-4 border-b">
-            <h2 className="text-lg font-semibold">Top 10 Proveedores con Mayor Deuda</h2>
+              <div className="flex flex-col sm:flex-row gap-3">
+                {/* Buscador */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar proveedor..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    className="pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-sm w-full sm:w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Filtro por empresa */}
+                <div className="flex items-center gap-1 bg-white border border-slate-300 rounded-lg p-1">
+                  <button
+                    onClick={() => setFiltroEmpresa('todos')}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      filtroEmpresa === 'todos'
+                        ? 'bg-slate-800 text-white'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    onClick={() => setFiltroEmpresa('VH')}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      filtroEmpresa === 'VH'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-600 hover:bg-blue-50'
+                    }`}
+                  >
+                    VH
+                  </button>
+                  <button
+                    onClick={() => setFiltroEmpresa('VC')}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      filtroEmpresa === 'VC'
+                        ? 'bg-emerald-600 text-white'
+                        : 'text-slate-600 hover:bg-emerald-50'
+                    }`}
+                  >
+                    VC
+                  </button>
+                </div>
+
+                {/* Ordenar */}
+                <select
+                  value={ordenar}
+                  onChange={(e) => setOrdenar(e.target.value as any)}
+                  className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="total">Mayor deuda</option>
+                  <option value="nombre">Nombre A-Z</option>
+                  <option value="vh">Mayor VH</option>
+                  <option value="vc">Mayor VC</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Contador de resultados */}
+            <p className="text-sm text-slate-500 mt-3">
+              Mostrando {saldosFiltrados.length} de {saldos.length} proveedores
+            </p>
           </div>
+
+          {/* Tabla */}
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Proveedor</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Saldo VH</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Saldo VC</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Total</th>
+              <thead>
+                <tr className="bg-slate-100">
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Proveedor</th>
+                  <th className="px-5 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Saldo VH</th>
+                  <th className="px-5 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Saldo VC</th>
+                  <th className="px-5 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Total</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
-                {saldos.slice(0, 10).map((proveedor) => (
-                  <tr key={proveedor.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">{proveedor.nombre}</td>
-                    <td className="px-4 py-3 text-right text-blue-800 font-semibold">{formatMoney(Number(proveedor.saldo_vh))}</td>
-                    <td className="px-4 py-3 text-right text-green-800 font-semibold">{formatMoney(Number(proveedor.saldo_vc))}</td>
-                    <td className="px-4 py-3 text-right font-bold">{formatMoney(Number(proveedor.saldo_total))}</td>
+              <tbody className="divide-y divide-slate-100">
+                {saldosFiltrados.slice(0, 20).map((proveedor, idx) => (
+                  <tr key={proveedor.id} className="table-row-hover hover:bg-slate-50 transition-colors">
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
+                          idx < 3 ? 'bg-gradient-to-br from-amber-400 to-amber-600' : 'bg-slate-400'
+                        }`}>
+                          {idx + 1}
+                        </div>
+                        <span className="font-medium text-slate-800">{proveedor.nombre}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      {proveedor.saldo_vh > 0 ? (
+                        <span className="font-semibold text-blue-700">{formatMoney(Number(proveedor.saldo_vh))}</span>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      {proveedor.saldo_vc > 0 ? (
+                        <span className="font-semibold text-emerald-700">{formatMoney(Number(proveedor.saldo_vc))}</span>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <span className="font-bold text-slate-800">{formatMoney(Number(proveedor.saldo_total))}</span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          {saldosFiltrados.length > 20 && (
+            <div className="p-4 bg-slate-50 border-t border-slate-200 text-center">
+              <Link href="/proveedores" className="text-blue-600 hover:text-blue-700 font-medium text-sm">
+                Ver todos los {saldosFiltrados.length} proveedores →
+              </Link>
+            </div>
+          )}
+
+          {saldosFiltrados.length === 0 && (
+            <div className="p-12 text-center">
+              <Search className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-500">No se encontraron proveedores</p>
+              <p className="text-slate-400 text-sm mt-1">Probá ajustando los filtros</p>
+            </div>
+          )}
         </div>
       </main>
     </div>
