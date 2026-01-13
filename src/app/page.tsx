@@ -145,7 +145,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-500 text-sm">Villalba Hermanos</p>
-                <p className="text-2xl font-bold text-blue-600">{formatMoney(totales.vh)}</p>
+                <p className="text-2xl font-bold text-blue-800">{formatMoney(totales.vh)}</p>
               </div>
               <Building2 className="h-10 w-10 text-blue-500" />
             </div>
@@ -156,7 +156,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-500 text-sm">Villalba Cristino</p>
-                <p className="text-2xl font-bold text-green-600">{formatMoney(totales.vc)}</p>
+                <p className="text-2xl font-bold text-green-800">{formatMoney(totales.vc)}</p>
               </div>
               <Building2 className="h-10 w-10 text-green-500" />
             </div>
@@ -186,10 +186,10 @@ export default function Dashboard() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {cuentaInterna.map((cuenta, idx) => (
-              <div key={idx} className={`p-4 rounded-lg ${cuenta.concepto.includes('VH debe') ? 'bg-blue-50' : 'bg-green-50'}`}>
-                <p className="font-medium">{cuenta.concepto}</p>
-                <p className="text-2xl font-bold">{formatMoney(Number(cuenta.monto_pendiente))}</p>
-                <p className="text-sm text-gray-500">Pagado: {formatMoney(Number(cuenta.monto_pagado))}</p>
+              <div key={idx} className={`p-4 rounded-lg ${cuenta.concepto.includes('VH debe') ? 'bg-blue-100 border border-blue-300' : 'bg-green-100 border border-green-300'}`}>
+                <p className="font-semibold text-gray-800">{cuenta.concepto}</p>
+                <p className={`text-2xl font-bold ${cuenta.concepto.includes('VH debe') ? 'text-blue-800' : 'text-green-800'}`}>{formatMoney(Number(cuenta.monto_pendiente))}</p>
+                <p className="text-sm text-gray-700">Pagado: {formatMoney(Number(cuenta.monto_pagado))}</p>
               </div>
             ))}
           </div>
@@ -240,8 +240,8 @@ export default function Dashboard() {
                 {saldos.slice(0, 10).map((proveedor) => (
                   <tr key={proveedor.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium">{proveedor.nombre}</td>
-                    <td className="px-4 py-3 text-right text-blue-600">{formatMoney(Number(proveedor.saldo_vh))}</td>
-                    <td className="px-4 py-3 text-right text-green-600">{formatMoney(Number(proveedor.saldo_vc))}</td>
+                    <td className="px-4 py-3 text-right text-blue-800 font-semibold">{formatMoney(Number(proveedor.saldo_vh))}</td>
+                    <td className="px-4 py-3 text-right text-green-800 font-semibold">{formatMoney(Number(proveedor.saldo_vc))}</td>
                     <td className="px-4 py-3 text-right font-bold">{formatMoney(Number(proveedor.saldo_total))}</td>
                   </tr>
                 ))}
