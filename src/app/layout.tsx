@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 export const metadata: Metadata = {
   title: "Sistema de Proveedores - Villalba",
@@ -14,7 +15,9 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className="antialiased bg-gray-100 font-sans">
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import { supabase, SaldoProveedor, CuentaInternaResumen, Factura } from '@/lib/supabase'
 import { Building2, Users, AlertTriangle, TrendingDown, ArrowRightLeft, Search, FileText, CreditCard, Download, ChevronRight, ChevronDown, Filter, X } from 'lucide-react'
 import Link from 'next/link'
+import ProtectedRoute from '@/components/ProtectedRoute'
+import UserMenu from '@/components/UserMenu'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface FacturaConPagos extends Factura {
   total_pagado: number
@@ -15,6 +18,7 @@ interface ProveedorConFacturas extends SaldoProveedor {
 }
 
 export default function Dashboard() {
+  const { user } = useAuth()
   const [saldos, setSaldos] = useState<ProveedorConFacturas[]>([])
   const [saldosFiltrados, setSaldosFiltrados] = useState<ProveedorConFacturas[]>([])
   const [cuentaInterna, setCuentaInterna] = useState<CuentaInternaResumen[]>([])
@@ -244,6 +248,7 @@ export default function Dashboard() {
   }
 
   return (
+    <ProtectedRoute>
     <div className="min-h-screen bg-slate-50">
       {/* Header Premium */}
       <header className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white shadow-xl">
@@ -257,6 +262,7 @@ export default function Dashboard() {
               <span className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 rounded-full text-xs font-medium border border-emerald-500/30">
                 ● Sistema Activo
               </span>
+              <UserMenu />
             </div>
           </div>
         </div>
@@ -669,5 +675,6 @@ export default function Dashboard() {
         </div>
       </main>
     </div>
+    </ProtectedRoute>
   )
 }
