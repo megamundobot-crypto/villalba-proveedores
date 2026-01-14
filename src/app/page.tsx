@@ -90,8 +90,8 @@ export default function Dashboard() {
   const [ordenarPor, setOrdenarPor] = useState<'nombre' | 'vh' | 'vc' | 'total'>('total')
   const [ordenAsc, setOrdenAsc] = useState(false)
 
-  // Selección de proveedores
-  const [proveedoresSeleccionados, setProveedoresSeleccionados] = useState<number[]>([])
+  // Selección de facturas individuales
+  const [facturasSeleccionadas, setFacturasSeleccionadas] = useState<number[]>([])
 
   useEffect(() => {
     loadData()
@@ -139,40 +139,39 @@ export default function Dashboard() {
     }
   }
 
-  // Funciones de selección
-  const toggleProveedorSeleccionado = (proveedorId: number, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setProveedoresSeleccionados(prev =>
-      prev.includes(proveedorId)
-        ? prev.filter(id => id !== proveedorId)
-        : [...prev, proveedorId]
+  // Funciones de selección de facturas
+  const toggleFacturaSeleccionada = (facturaId: number) => {
+    setFacturasSeleccionadas(prev =>
+      prev.includes(facturaId)
+        ? prev.filter(id => id !== facturaId)
+        : [...prev, facturaId]
     )
   }
 
-  const toggleSeleccionarTodos = () => {
-    if (proveedoresSeleccionados.length === saldosFiltrados.length) {
-      setProveedoresSeleccionados([])
-    } else {
-      setProveedoresSeleccionados(saldosFiltrados.map(p => p.id))
-    }
+  const limpiarSeleccionFacturas = () => {
+    setFacturasSeleccionadas([])
   }
 
-  const limpiarSeleccion = () => {
-    setProveedoresSeleccionados([])
-  }
+  // Obtener todas las facturas de todos los proveedores para calcular totales
+  const todasLasFacturas: FacturaConPagos[] = saldosFiltrados
+    .filter(p => p.facturas)
+    .flatMap(p => p.facturas || [])
 
-  // Calcular totales de proveedores seleccionados
+  // Calcular totales de facturas seleccionadas
   const totalesSeleccionados = {
-    cantidad: proveedoresSeleccionados.length,
-    vh: saldosFiltrados
-      .filter(p => proveedoresSeleccionados.includes(p.id))
-      .reduce((sum, p) => sum + p.saldo_vh, 0),
-    vc: saldosFiltrados
-      .filter(p => proveedoresSeleccionados.includes(p.id))
-      .reduce((sum, p) => sum + p.saldo_vc, 0),
-    total: saldosFiltrados
-      .filter(p => proveedoresSeleccionados.includes(p.id))
-      .reduce((sum, p) => sum + p.saldo_total, 0)
+    cantidad: facturasSeleccionadas.length,
+    vh: todasLasFacturas
+      .filter(f => facturasSeleccionadas.includes(f.id) && f.empresa === 'VH')
+      .reduce((sum, f) => sum + f.saldo_pendiente, 0),
+    vc: todasLasFacturas
+      .filter(f => facturasSeleccionadas.includes(f.id) && f.empresa === 'VC')
+      .reduce((sum, f) => sum + f.saldo_pendiente, 0),
+    total: todasLasFacturas
+      .filter(f => facturasSeleccionadas.includes(f.id))
+      .reduce((sum, f) => sum + f.saldo_pendiente, 0),
+    montoTotal: todasLasFacturas
+      .filter(f => facturasSeleccionadas.includes(f.id))
+      .reduce((sum, f) => sum + f.monto_total, 0)
   }
 
   async function loadData() {
@@ -432,38 +431,40 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {/* Panel de selección */}
-          {proveedoresSeleccionados.length > 0 && (
-            <div className="card-premium p-4 mb-6 animate-fadeIn bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-600 text-white shadow-lg">
-                    <span className="text-lg font-bold">{totalesSeleccionados.cantidad}</span>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-indigo-800">
-                      {totalesSeleccionados.cantidad === 1 ? 'Proveedor seleccionado' : 'Proveedores seleccionados'}
-                    </p>
-                    <div className="flex items-center gap-4 mt-1 flex-wrap">
-                      <span className="text-sm text-slate-600">
-                        VH: <strong className="text-blue-600">{formatMoney(totalesSeleccionados.vh)}</strong>
-                      </span>
-                      <span className="text-sm text-slate-600">
-                        VC: <strong className="text-emerald-600">{formatMoney(totalesSeleccionados.vc)}</strong>
-                      </span>
-                      <span className="text-sm text-slate-600">
-                        Total: <strong className="text-indigo-700">{formatMoney(totalesSeleccionados.total)}</strong>
-                      </span>
+          {/* Panel de selección de facturas - STICKY siempre visible */}
+          {facturasSeleccionadas.length > 0 && (
+            <div className="sticky top-20 z-40 mb-6 animate-fadeIn">
+              <div className="card-premium p-4 bg-gradient-to-r from-indigo-600 to-purple-600 border-2 border-indigo-400 shadow-xl">
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center justify-center w-14 h-14 rounded-xl bg-white/20 backdrop-blur text-white shadow-lg">
+                      <span className="text-2xl font-bold">{totalesSeleccionados.cantidad}</span>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-white text-lg">
+                        {totalesSeleccionados.cantidad === 1 ? 'Factura seleccionada' : 'Facturas seleccionadas'}
+                      </p>
+                      <div className="flex items-center gap-4 mt-1 flex-wrap">
+                        <span className="text-sm text-white/90">
+                          VH: <strong className="text-blue-200">{formatMoney(totalesSeleccionados.vh)}</strong>
+                        </span>
+                        <span className="text-sm text-white/90">
+                          VC: <strong className="text-emerald-200">{formatMoney(totalesSeleccionados.vc)}</strong>
+                        </span>
+                        <span className="text-sm text-white/90">
+                          Saldo Total: <strong className="text-yellow-200 text-lg">{formatMoney(totalesSeleccionados.total)}</strong>
+                        </span>
+                      </div>
                     </div>
                   </div>
+                  <button
+                    onClick={limpiarSeleccionFacturas}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+                  >
+                    {Icons.x}
+                    Limpiar
+                  </button>
                 </div>
-                <button
-                  onClick={limpiarSeleccion}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                >
-                  {Icons.x}
-                  Limpiar selección
-                </button>
               </div>
             </div>
           )}
@@ -494,15 +495,6 @@ export default function Dashboard() {
               <table className="w-full">
                 <thead>
                   <tr className="bg-slate-100 border-b-2 border-slate-200">
-                    <th className="px-4 py-4 w-12">
-                      <input
-                        type="checkbox"
-                        checked={saldosFiltrados.length > 0 && proveedoresSeleccionados.length === saldosFiltrados.length}
-                        onChange={toggleSeleccionarTodos}
-                        className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                        title={proveedoresSeleccionados.length === saldosFiltrados.length ? 'Deseleccionar todos' : 'Seleccionar todos'}
-                      />
-                    </th>
                     <th
                       className="px-6 py-4 text-left cursor-pointer hover:bg-slate-200 transition-colors group"
                       onClick={(e) => { e.stopPropagation(); handleSort('nombre') }}
@@ -556,25 +548,14 @@ export default function Dashboard() {
                       <tr
                         key={prov.id}
                         className={`cursor-pointer transition-colors ${
-                          proveedoresSeleccionados.includes(prov.id)
-                            ? 'bg-indigo-100 hover:bg-indigo-150 border-l-4 border-indigo-500'
-                            : expandedProveedor === prov.id
-                              ? 'bg-indigo-50 border-l-4 border-indigo-400'
-                              : idx % 2 === 0
-                                ? 'bg-white hover:bg-indigo-50'
-                                : 'bg-slate-100 hover:bg-indigo-100'
+                          expandedProveedor === prov.id
+                            ? 'bg-indigo-50 border-l-4 border-indigo-400'
+                            : idx % 2 === 0
+                              ? 'bg-white hover:bg-indigo-50'
+                              : 'bg-slate-100 hover:bg-indigo-100'
                         }`}
                         onClick={() => toggleProveedor(prov.id)}
                       >
-                        <td className="px-4 py-5">
-                          <input
-                            type="checkbox"
-                            checked={proveedoresSeleccionados.includes(prov.id)}
-                            onChange={(e) => { e.stopPropagation(); toggleProveedorSeleccionado(prov.id, e as any) }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                          />
-                        </td>
                         <td className="px-6 py-5">
                           <span className="text-base font-semibold text-slate-800">{prov.nombre}</span>
                         </td>
@@ -600,7 +581,7 @@ export default function Dashboard() {
                         </td>
                       </tr>
                       {expandedProveedor === prov.id && (
-                        <tr><td colSpan={6} className="p-0 bg-slate-50/80">
+                        <tr><td colSpan={5} className="p-0 bg-slate-50/80">
                           <div className="p-6 border-l-4 border-indigo-500">
                             <div className="flex items-center justify-between mb-4">
                               <h4 className="font-semibold text-slate-700">Facturas Pendientes</h4>
@@ -611,19 +592,48 @@ export default function Dashboard() {
                             ) : prov.facturas && prov.facturas.length > 0 ? (
                               <div className="overflow-x-auto rounded-xl border border-slate-200">
                                 <table className="w-full text-sm">
-                                  <thead><tr className="bg-slate-100"><th className="px-4 py-3 text-left font-semibold text-slate-600">Emp</th><th className="px-4 py-3 text-left font-semibold text-slate-600">N° FC</th><th className="px-4 py-3 text-left font-semibold text-slate-600">Fecha</th><th className="px-4 py-3 text-right font-semibold text-slate-600">Total</th><th className="px-4 py-3 text-right font-semibold text-slate-600">Pagado</th><th className="px-4 py-3 text-right font-semibold text-slate-600">Saldo</th><th className="px-4 py-3 text-center font-semibold text-slate-600">Días</th></tr></thead>
+                                  <thead>
+                                    <tr className="bg-slate-100">
+                                      <th className="px-3 py-3 w-10"></th>
+                                      <th className="px-4 py-3 text-left font-semibold text-slate-600">Emp</th>
+                                      <th className="px-4 py-3 text-left font-semibold text-slate-600">N° FC</th>
+                                      <th className="px-4 py-3 text-left font-semibold text-slate-600">Fecha</th>
+                                      <th className="px-4 py-3 text-right font-semibold text-slate-600">Total</th>
+                                      <th className="px-4 py-3 text-right font-semibold text-slate-600">Pagado</th>
+                                      <th className="px-4 py-3 text-right font-semibold text-slate-600">Saldo</th>
+                                      <th className="px-4 py-3 text-center font-semibold text-slate-600">Días</th>
+                                    </tr>
+                                  </thead>
                                   <tbody className="divide-y divide-slate-100 bg-white">
                                     {prov.facturas.map((fc) => {
                                       const dias = getDiasAntiguedad(fc.fecha)
                                       const st = getAlertaStyle(dias)
+                                      const isSelected = facturasSeleccionadas.includes(fc.id)
                                       return (
-                                        <tr key={fc.id} className="hover:bg-slate-50">
+                                        <tr
+                                          key={fc.id}
+                                          className={`cursor-pointer transition-colors ${
+                                            isSelected
+                                              ? 'bg-indigo-100 hover:bg-indigo-150'
+                                              : 'hover:bg-slate-50'
+                                          }`}
+                                          onClick={(e) => { e.stopPropagation(); toggleFacturaSeleccionada(fc.id) }}
+                                        >
+                                          <td className="px-3 py-3">
+                                            <input
+                                              type="checkbox"
+                                              checked={isSelected}
+                                              onChange={() => toggleFacturaSeleccionada(fc.id)}
+                                              onClick={(e) => e.stopPropagation()}
+                                              className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                            />
+                                          </td>
                                           <td className="px-4 py-3"><span className={`badge ${fc.empresa === 'VH' ? 'badge-vh' : 'badge-vc'}`}>{fc.empresa}</span></td>
                                           <td className="px-4 py-3 font-medium text-slate-700">{fc.numero}</td>
                                           <td className="px-4 py-3 text-slate-600">{formatDate(fc.fecha)}</td>
                                           <td className="px-4 py-3 text-right tabular-nums">{formatMoney(fc.monto_total)}</td>
                                           <td className="px-4 py-3 text-right tabular-nums">{fc.total_pagado > 0 ? <span className="text-emerald-600">{formatMoney(fc.total_pagado)}</span> : <span className="text-slate-300">—</span>}</td>
-                                          <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatMoney(fc.saldo_pendiente)}</td>
+                                          <td className="px-4 py-3 text-right font-bold tabular-nums text-red-600">{formatMoney(fc.saldo_pendiente)}</td>
                                           <td className="px-4 py-3 text-center"><span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${st.bg} ${st.text} border ${st.border}`}>{dias}d</span></td>
                                         </tr>
                                       )
