@@ -82,6 +82,8 @@ export default function Dashboard() {
   const [loadingFacturas, setLoadingFacturas] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [filtroEmpresa, setFiltroEmpresa] = useState<'todos' | 'VH' | 'VC'>('todos')
+  const [ordenarPor, setOrdenarPor] = useState<'nombre' | 'vh' | 'vc' | 'total'>('total')
+  const [ordenAsc, setOrdenAsc] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -97,9 +99,37 @@ export default function Dashboard() {
     } else if (filtroEmpresa === 'VC') {
       filtered = filtered.filter(s => s.saldo_vc > 0)
     }
-    filtered.sort((a, b) => b.saldo_total - a.saldo_total)
+    // Ordenamiento dinámico
+    filtered.sort((a, b) => {
+      let comparison = 0
+      switch (ordenarPor) {
+        case 'nombre':
+          comparison = a.nombre.localeCompare(b.nombre)
+          break
+        case 'vh':
+          comparison = b.saldo_vh - a.saldo_vh
+          break
+        case 'vc':
+          comparison = b.saldo_vc - a.saldo_vc
+          break
+        case 'total':
+        default:
+          comparison = b.saldo_total - a.saldo_total
+          break
+      }
+      return ordenAsc ? -comparison : comparison
+    })
     setSaldosFiltrados(filtered)
-  }, [saldos, busqueda, filtroEmpresa])
+  }, [saldos, busqueda, filtroEmpresa, ordenarPor, ordenAsc])
+
+  const handleSort = (columna: 'nombre' | 'vh' | 'vc' | 'total') => {
+    if (ordenarPor === columna) {
+      setOrdenAsc(!ordenAsc)
+    } else {
+      setOrdenarPor(columna)
+      setOrdenAsc(columna === 'nombre') // A-Z por defecto para nombre, mayor a menor para números
+    }
+  }
 
   async function loadData() {
     setLoading(true)
@@ -381,17 +411,98 @@ export default function Dashboard() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="table-premium">
-                <thead><tr><th>Proveedor</th><th className="text-right">Saldo VH</th><th className="text-right">Saldo VC</th><th className="text-right">Total</th><th className="w-12"></th></tr></thead>
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-slate-100 border-b-2 border-slate-200">
+                    <th
+                      className="px-6 py-4 text-left cursor-pointer hover:bg-slate-200 transition-colors group"
+                      onClick={(e) => { e.stopPropagation(); handleSort('nombre') }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">Proveedor</span>
+                        <span className={`transition-all ${ordenarPor === 'nombre' ? 'text-indigo-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                          {ordenarPor === 'nombre' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                        </span>
+                      </div>
+                    </th>
+                    <th
+                      className="px-6 py-4 text-center cursor-pointer hover:bg-slate-200 transition-colors group"
+                      onClick={(e) => { e.stopPropagation(); handleSort('vh') }}
+                    >
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-sm font-bold text-blue-700 uppercase tracking-wider">Saldo VH</span>
+                        <span className={`transition-all ${ordenarPor === 'vh' ? 'text-blue-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                          {ordenarPor === 'vh' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                        </span>
+                      </div>
+                    </th>
+                    <th
+                      className="px-6 py-4 text-center cursor-pointer hover:bg-slate-200 transition-colors group"
+                      onClick={(e) => { e.stopPropagation(); handleSort('vc') }}
+                    >
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-sm font-bold text-emerald-700 uppercase tracking-wider">Saldo VC</span>
+                        <span className={`transition-all ${ordenarPor === 'vc' ? 'text-emerald-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                          {ordenarPor === 'vc' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                        </span>
+                      </div>
+                    </th>
+                    <th
+                      className="px-6 py-4 text-center cursor-pointer hover:bg-slate-200 transition-colors group"
+                      onClick={(e) => { e.stopPropagation(); handleSort('total') }}
+                    >
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-sm font-bold text-slate-800 uppercase tracking-wider">Total</span>
+                        <span className={`transition-all ${ordenarPor === 'total' ? 'text-indigo-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                          {ordenarPor === 'total' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                        </span>
+                      </div>
+                    </th>
+                    <th className="w-12 px-4 py-4"></th>
+                  </tr>
+                </thead>
                 <tbody>
                   {saldosFiltrados.map((prov, idx) => (
                     <>
-                      <tr key={prov.id} className={`cursor-pointer ${expandedProveedor === prov.id ? 'bg-indigo-50/50' : ''}`} onClick={() => toggleProveedor(prov.id)}>
-                        <td><div className="flex items-center gap-3"><div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold ${idx < 3 ? 'gradient-primary' : 'bg-slate-300'}`}>{idx + 1}</div><span className="font-medium text-slate-800">{prov.nombre}</span></div></td>
-                        <td className="text-right">{prov.saldo_vh > 0 ? <span className="font-semibold text-blue-600 tabular-nums">{formatMoney(prov.saldo_vh)}</span> : <span className="text-slate-300">—</span>}</td>
-                        <td className="text-right">{prov.saldo_vc > 0 ? <span className="font-semibold text-emerald-600 tabular-nums">{formatMoney(prov.saldo_vc)}</span> : <span className="text-slate-300">—</span>}</td>
-                        <td className="text-right"><span className="font-bold text-slate-800 tabular-nums">{formatMoney(prov.saldo_total)}</span></td>
-                        <td><span className={`transition-transform inline-block ${expandedProveedor === prov.id ? 'rotate-90 text-indigo-600' : 'text-slate-400'}`}>{Icons.chevronRight}</span></td>
+                      <tr
+                        key={prov.id}
+                        className={`cursor-pointer transition-colors ${
+                          expandedProveedor === prov.id
+                            ? 'bg-indigo-50'
+                            : idx % 2 === 0
+                              ? 'bg-white hover:bg-slate-50'
+                              : 'bg-slate-50/70 hover:bg-slate-100'
+                        }`}
+                        onClick={() => toggleProveedor(prov.id)}
+                      >
+                        <td className="px-6 py-5">
+                          <div className="flex items-center gap-4">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white text-base font-bold shadow-md ${idx < 3 ? 'gradient-primary' : 'bg-slate-400'}`}>
+                              {idx + 1}
+                            </div>
+                            <span className="text-base font-semibold text-slate-800">{prov.nombre}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5 text-center">
+                          {prov.saldo_vh > 0
+                            ? <span className="text-lg font-bold text-blue-600 tabular-nums">{formatMoney(prov.saldo_vh)}</span>
+                            : <span className="text-slate-300 text-lg">—</span>
+                          }
+                        </td>
+                        <td className="px-6 py-5 text-center">
+                          {prov.saldo_vc > 0
+                            ? <span className="text-lg font-bold text-emerald-600 tabular-nums">{formatMoney(prov.saldo_vc)}</span>
+                            : <span className="text-slate-300 text-lg">—</span>
+                          }
+                        </td>
+                        <td className="px-6 py-5 text-center">
+                          <span className="text-lg font-extrabold text-slate-800 tabular-nums">{formatMoney(prov.saldo_total)}</span>
+                        </td>
+                        <td className="px-4 py-5">
+                          <span className={`transition-transform inline-block ${expandedProveedor === prov.id ? 'rotate-90 text-indigo-600' : 'text-slate-400'}`}>
+                            {Icons.chevronRight}
+                          </span>
+                        </td>
                       </tr>
                       {expandedProveedor === prov.id && (
                         <tr><td colSpan={5} className="p-0 bg-slate-50/80">
