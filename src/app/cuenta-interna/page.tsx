@@ -143,6 +143,10 @@ export default function CuentaInternaPage() {
         const saldo = Number(f.monto_total) - pagado
         if (saldo <= 0) return // Factura pagada, no mostrar
 
+        // Calcular neto e IVA del SALDO pendiente
+        const saldoNeto = saldo / 1.21
+        const saldoIva = saldo - saldoNeto
+
         if (!proveedores[provId]) {
           proveedores[provId] = {
             id: provId,
@@ -158,16 +162,16 @@ export default function CuentaInternaPage() {
         // Sumar al saldo de VH o VC según empresa
         if (f.empresa === 'VH') {
           proveedores[provId].vh_debe += saldo
+          // FC de VH: VH paga 65% neto + IVA, VC paga 35% neto
+          proveedores[provId].deuda_real_vh += (saldoNeto * 0.65) + saldoIva
+          proveedores[provId].deuda_real_vc += saldoNeto * 0.35
         } else {
           proveedores[provId].vc_debe += saldo
+          // FC de VC: VH paga 65% neto, VC paga 35% neto + IVA
+          proveedores[provId].deuda_real_vh += saldoNeto * 0.65
+          proveedores[provId].deuda_real_vc += (saldoNeto * 0.35) + saldoIva
         }
         proveedores[provId].total_general += saldo
-      })
-
-      // Calcular deuda real (65/35 del total de cada proveedor)
-      Object.values(proveedores).forEach(p => {
-        p.deuda_real_vh = p.total_general * 0.65
-        p.deuda_real_vc = p.total_general * 0.35
       })
     }
 
