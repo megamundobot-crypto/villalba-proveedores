@@ -67,7 +67,10 @@ export default function FacturasPage() {
   const [busqueda, setBusqueda] = useState('')
   const [filtroEmpresa, setFiltroEmpresa] = useState<'todos' | 'VH' | 'VC'>('todos')
   const [filtroProveedor, setFiltroProveedor] = useState('')
-  const [ordenar, setOrdenar] = useState<'fecha_asc' | 'fecha_desc' | 'monto_desc' | 'monto_asc' | 'proveedor'>('fecha_asc')
+
+  // Ordenamiento por columnas
+  const [ordenarPor, setOrdenarPor] = useState<'dias' | 'proveedor' | 'empresa' | 'numero' | 'fecha' | 'total' | 'saldo'>('dias')
+  const [ordenAsc, setOrdenAsc] = useState(false)
 
   const [formData, setFormData] = useState({
     proveedor_id: '',
@@ -108,19 +111,48 @@ export default function FacturasPage() {
       filtered = filtered.filter(f => f.proveedor_id === parseInt(filtroProveedor))
     }
 
+    // Ordenamiento dinámico por columna
     filtered.sort((a, b) => {
-      switch (ordenar) {
-        case 'fecha_asc': return new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
-        case 'fecha_desc': return new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
-        case 'monto_desc': return b.monto_total - a.monto_total
-        case 'monto_asc': return a.monto_total - b.monto_total
-        case 'proveedor': return (a.proveedor_nombre || '').localeCompare(b.proveedor_nombre || '')
-        default: return 0
+      let comparison = 0
+      switch (ordenarPor) {
+        case 'dias':
+          comparison = (b.dias_antiguedad || 0) - (a.dias_antiguedad || 0)
+          break
+        case 'proveedor':
+          comparison = (a.proveedor_nombre || '').localeCompare(b.proveedor_nombre || '')
+          break
+        case 'empresa':
+          comparison = a.empresa.localeCompare(b.empresa)
+          break
+        case 'numero':
+          comparison = a.numero.localeCompare(b.numero)
+          break
+        case 'fecha':
+          comparison = new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+          break
+        case 'total':
+          comparison = b.monto_total - a.monto_total
+          break
+        case 'saldo':
+          comparison = Number(b.saldo_pendiente || 0) - Number(a.saldo_pendiente || 0)
+          break
+        default:
+          comparison = 0
       }
+      return ordenAsc ? -comparison : comparison
     })
 
     setFacturasFiltradas(filtered)
-  }, [facturas, busqueda, filtroEmpresa, filtroProveedor, ordenar])
+  }, [facturas, busqueda, filtroEmpresa, filtroProveedor, ordenarPor, ordenAsc])
+
+  const handleSort = (columna: 'dias' | 'proveedor' | 'empresa' | 'numero' | 'fecha' | 'total' | 'saldo') => {
+    if (ordenarPor === columna) {
+      setOrdenAsc(!ordenAsc)
+    } else {
+      setOrdenarPor(columna)
+      setOrdenAsc(columna === 'proveedor' || columna === 'numero') // A-Z por defecto para texto
+    }
+  }
 
   async function loadData() {
     setLoading(true)
@@ -350,19 +382,6 @@ export default function FacturasPage() {
                 ))}
               </select>
 
-              {/* Ordenar */}
-              <select
-                value={ordenar}
-                onChange={(e) => setOrdenar(e.target.value as any)}
-                className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="fecha_asc">Más antiguas primero</option>
-                <option value="fecha_desc">Más recientes primero</option>
-                <option value="monto_desc">Mayor importe</option>
-                <option value="monto_asc">Menor importe</option>
-                <option value="proveedor">Proveedor A-Z</option>
-              </select>
-
               {/* Botón nueva factura */}
               <button
                 onClick={openNewModal}
@@ -400,13 +419,83 @@ export default function FacturasPage() {
               <table className="w-full">
                 <thead>
                   <tr className="bg-slate-100 border-b-2 border-slate-200">
-                    <th className="px-5 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Estado</th>
-                    <th className="px-5 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Proveedor</th>
-                    <th className="px-5 py-4 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Empresa</th>
-                    <th className="px-5 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Número</th>
-                    <th className="px-5 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Fecha</th>
-                    <th className="px-5 py-4 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Total</th>
-                    <th className="px-5 py-4 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Saldo</th>
+                    <th
+                      className="px-5 py-4 text-left cursor-pointer hover:bg-slate-200 transition-colors group"
+                      onClick={() => handleSort('dias')}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Días</span>
+                        <span className={`transition-all ${ordenarPor === 'dias' ? 'text-indigo-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                          {ordenarPor === 'dias' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                        </span>
+                      </div>
+                    </th>
+                    <th
+                      className="px-5 py-4 text-left cursor-pointer hover:bg-slate-200 transition-colors group"
+                      onClick={() => handleSort('proveedor')}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Proveedor</span>
+                        <span className={`transition-all ${ordenarPor === 'proveedor' ? 'text-indigo-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                          {ordenarPor === 'proveedor' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                        </span>
+                      </div>
+                    </th>
+                    <th
+                      className="px-5 py-4 text-center cursor-pointer hover:bg-slate-200 transition-colors group"
+                      onClick={() => handleSort('empresa')}
+                    >
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Empresa</span>
+                        <span className={`transition-all ${ordenarPor === 'empresa' ? 'text-indigo-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                          {ordenarPor === 'empresa' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                        </span>
+                      </div>
+                    </th>
+                    <th
+                      className="px-5 py-4 text-left cursor-pointer hover:bg-slate-200 transition-colors group"
+                      onClick={() => handleSort('numero')}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Número</span>
+                        <span className={`transition-all ${ordenarPor === 'numero' ? 'text-indigo-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                          {ordenarPor === 'numero' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                        </span>
+                      </div>
+                    </th>
+                    <th
+                      className="px-5 py-4 text-left cursor-pointer hover:bg-slate-200 transition-colors group"
+                      onClick={() => handleSort('fecha')}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Fecha</span>
+                        <span className={`transition-all ${ordenarPor === 'fecha' ? 'text-indigo-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                          {ordenarPor === 'fecha' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                        </span>
+                      </div>
+                    </th>
+                    <th
+                      className="px-5 py-4 text-right cursor-pointer hover:bg-slate-200 transition-colors group"
+                      onClick={() => handleSort('total')}
+                    >
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Total</span>
+                        <span className={`transition-all ${ordenarPor === 'total' ? 'text-indigo-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                          {ordenarPor === 'total' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                        </span>
+                      </div>
+                    </th>
+                    <th
+                      className="px-5 py-4 text-right cursor-pointer hover:bg-slate-200 transition-colors group"
+                      onClick={() => handleSort('saldo')}
+                    >
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="text-xs font-bold text-red-600 uppercase tracking-wider">Saldo</span>
+                        <span className={`transition-all ${ordenarPor === 'saldo' ? 'text-red-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                          {ordenarPor === 'saldo' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                        </span>
+                      </div>
+                    </th>
                     <th className="px-5 py-4 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Acciones</th>
                   </tr>
                 </thead>
@@ -415,8 +504,8 @@ export default function FacturasPage() {
                     <tr
                       key={factura.id}
                       className={`transition-colors ${
-                        idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'
-                      } hover:bg-indigo-50/50`}
+                        idx % 2 === 0 ? 'bg-white hover:bg-slate-100' : 'bg-slate-100 hover:bg-slate-200'
+                      }`}
                     >
                       <td className="px-5 py-4">
                         <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${

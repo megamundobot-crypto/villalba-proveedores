@@ -271,8 +271,8 @@ export default function ProveedoresPage() {
                     <tr
                       key={prov.id}
                       className={`transition-colors ${
-                        idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'
-                      } hover:bg-indigo-50/50`}
+                        idx % 2 === 0 ? 'bg-white hover:bg-slate-100' : 'bg-slate-100 hover:bg-slate-200'
+                      }`}
                     >
                       <td className="px-6 py-4">
                         <span className="font-semibold text-slate-800">{prov.nombre}</span>

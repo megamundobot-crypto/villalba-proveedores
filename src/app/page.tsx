@@ -468,20 +468,15 @@ export default function Dashboard() {
                         key={prov.id}
                         className={`cursor-pointer transition-colors ${
                           expandedProveedor === prov.id
-                            ? 'bg-indigo-50'
+                            ? 'bg-indigo-100 border-l-4 border-indigo-500'
                             : idx % 2 === 0
-                              ? 'bg-white hover:bg-slate-50'
-                              : 'bg-slate-50/70 hover:bg-slate-100'
+                              ? 'bg-white hover:bg-slate-100'
+                              : 'bg-slate-100 hover:bg-slate-200'
                         }`}
                         onClick={() => toggleProveedor(prov.id)}
                       >
                         <td className="px-6 py-5">
-                          <div className="flex items-center gap-4">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white text-base font-bold shadow-md ${idx < 3 ? 'gradient-primary' : 'bg-slate-400'}`}>
-                              {idx + 1}
-                            </div>
-                            <span className="text-base font-semibold text-slate-800">{prov.nombre}</span>
-                          </div>
+                          <span className="text-base font-semibold text-slate-800">{prov.nombre}</span>
                         </td>
                         <td className="px-6 py-5 text-center">
                           {prov.saldo_vh > 0
