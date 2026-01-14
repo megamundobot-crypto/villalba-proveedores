@@ -592,7 +592,7 @@ export default function Dashboard() {
                             </div>
                             {loadingFacturas ? (
                               <div className="flex items-center justify-center py-8"><div className="w-6 h-6 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div><span className="ml-3 text-slate-500">Cargando...</span></div>
-                            ) : prov.facturas && prov.facturas.length > 0 ? (
+                            ) : prov.facturas && prov.facturas.filter(fc => filtroEmpresa === 'todos' || fc.empresa === filtroEmpresa).length > 0 ? (
                               <div className="overflow-x-auto rounded-xl border border-slate-200">
                                 <table className="w-full text-sm">
                                   <thead>
@@ -608,7 +608,9 @@ export default function Dashboard() {
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100 bg-white">
-                                    {prov.facturas.map((fc) => {
+                                    {prov.facturas
+                                      .filter(fc => filtroEmpresa === 'todos' || fc.empresa === filtroEmpresa)
+                                      .map((fc) => {
                                       const dias = getDiasAntiguedad(fc.fecha)
                                       const st = getAlertaStyle(dias)
                                       const isSelected = facturasSeleccionadas.includes(fc.id)
@@ -644,7 +646,9 @@ export default function Dashboard() {
                                   </tbody>
                                 </table>
                               </div>
-                            ) : <p className="text-slate-500 py-4 text-center">No hay facturas</p>}
+                            ) : <p className="text-slate-500 py-4 text-center">
+                                No hay facturas {filtroEmpresa !== 'todos' ? `de ${filtroEmpresa === 'VH' ? 'Villalba Hermanos' : 'Villalba Cristino'}` : ''}
+                              </p>}
                           </div>
                         </td></tr>
                       )}
