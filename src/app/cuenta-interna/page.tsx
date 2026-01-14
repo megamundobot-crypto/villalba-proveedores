@@ -90,17 +90,16 @@ export default function CuentaInternaPage() {
     }
     setProveedoresMap(provMap)
 
-    // Cargar datos de cuenta_interna (donde están los 885 registros importados)
+    // Cargar datos de cuenta_interna (donde están los registros importados)
     const { data: cuentaData } = await supabase
       .from('cuenta_interna')
       .select('*')
       .order('created_at', { ascending: true })
 
-    // Procesar datos
-    const proveedores: Record<number, ProveedorResumen> = {}
+    // Procesar datos - agrupar por nombre de proveedor (extraído de observaciones o por proveedor_id)
+    const proveedores: Record<string, ProveedorResumen> = {}
     const pagosInternosArr: PagoInterno[] = []
-    let totalVhDebeVc = 0
-    let totalVcDebeVh = 0
+    let idCounter = 1
 
     if (cuentaData) {
       cuentaData.forEach((row: CuentaInternaRow) => {
@@ -117,13 +116,29 @@ export default function CuentaInternaPage() {
           })
         } else {
           // Es una deuda (tipo = 'deuda' o undefined)
-          const provId = row.proveedor_id
-          if (!provId) return
+          // Extraer nombre del proveedor de observaciones (formato: "FC 123 - NOMBRE PROVEEDOR")
+          // o usar proveedor_id si existe
+          let provNombre = ''
 
-          if (!proveedores[provId]) {
-            proveedores[provId] = {
-              id: provId,
-              nombre: provMap[provId] || `Proveedor ${provId}`,
+          if (row.proveedor_id && provMap[row.proveedor_id]) {
+            provNombre = provMap[row.proveedor_id]
+          } else if (row.observaciones) {
+            // Extraer de "FC 123 - NOMBRE PROVEEDOR"
+            const match = row.observaciones.match(/FC \d+ - (.+)$/)
+            if (match) {
+              provNombre = match[1].trim()
+            }
+          }
+
+          if (!provNombre) return // Si no hay nombre, ignorar
+
+          // Normalizar nombre (quitar " B" al final para agrupar variantes)
+          const provKey = provNombre.replace(/ B$/, '').toUpperCase()
+
+          if (!proveedores[provKey]) {
+            proveedores[provKey] = {
+              id: idCounter++,
+              nombre: provNombre.replace(/ B$/, ''), // Nombre sin " B"
               vh_debe: 0,
               vc_debe: 0,
               total_general: 0,
@@ -132,20 +147,14 @@ export default function CuentaInternaPage() {
             }
           }
 
-          // debe_vh = lo que VH debe (factura recibida por VH, VH le debe al proveedor)
-          // debe_vc = lo que VC debe (factura recibida por VC, VC le debe al proveedor)
+          // debe_vh = lo que VH debe al proveedor (montos de facturas VH)
+          // debe_vc = lo que VC debe al proveedor (montos de facturas VC)
           const debeVh = Number(row.debe_vh) || 0
           const debeVc = Number(row.debe_vc) || 0
 
-          proveedores[provId].vh_debe += debeVh
-          proveedores[provId].vc_debe += debeVc
-          proveedores[provId].total_general += debeVh + debeVc
-
-          // Actualizar totales para cuenta interna (65/35)
-          // VH debe a VC = 65% de facturas VC
-          // VC debe a VH = 35% de facturas VH
-          totalVhDebeVc += debeVc * 0.65  // VH debe el 65% de lo que VC pagó
-          totalVcDebeVh += debeVh * 0.35  // VC debe el 35% de lo que VH pagó
+          proveedores[provKey].vh_debe += debeVh
+          proveedores[provKey].vc_debe += debeVc
+          proveedores[provKey].total_general += debeVh + debeVc
         }
       })
 
