@@ -470,8 +470,8 @@ export default function Dashboard() {
                           expandedProveedor === prov.id
                             ? 'bg-indigo-100 border-l-4 border-indigo-500'
                             : idx % 2 === 0
-                              ? 'bg-white hover:bg-slate-100'
-                              : 'bg-slate-100 hover:bg-slate-200'
+                              ? 'bg-white hover:bg-indigo-50'
+                              : 'bg-slate-100 hover:bg-indigo-100'
                         }`}
                         onClick={() => toggleProveedor(prov.id)}
                       >
