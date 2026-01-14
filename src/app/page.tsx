@@ -434,32 +434,35 @@ export default function Dashboard() {
           {/* Panel de selección de facturas - STICKY siempre visible */}
           {facturasSeleccionadas.length > 0 && (
             <div className="sticky top-20 z-40 mb-6 animate-fadeIn">
-              <div className="card-premium p-4 bg-gradient-to-r from-indigo-600 to-purple-600 border-2 border-indigo-400 shadow-xl">
+              <div className="p-5 bg-slate-900 rounded-2xl border-2 border-slate-700 shadow-2xl">
                 <div className="flex items-center justify-between flex-wrap gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center justify-center w-14 h-14 rounded-xl bg-white/20 backdrop-blur text-white shadow-lg">
-                      <span className="text-2xl font-bold">{totalesSeleccionados.cantidad}</span>
+                  <div className="flex items-center gap-5">
+                    <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 text-white shadow-lg">
+                      <span className="text-3xl font-bold">{totalesSeleccionados.cantidad}</span>
                     </div>
                     <div>
-                      <p className="font-semibold text-white text-lg">
+                      <p className="font-bold text-white text-xl mb-2">
                         {totalesSeleccionados.cantidad === 1 ? 'Factura seleccionada' : 'Facturas seleccionadas'}
                       </p>
-                      <div className="flex items-center gap-4 mt-1 flex-wrap">
-                        <span className="text-sm text-white/90">
-                          VH: <strong className="text-blue-200">{formatMoney(totalesSeleccionados.vh)}</strong>
-                        </span>
-                        <span className="text-sm text-white/90">
-                          VC: <strong className="text-emerald-200">{formatMoney(totalesSeleccionados.vc)}</strong>
-                        </span>
-                        <span className="text-sm text-white/90">
-                          Saldo Total: <strong className="text-yellow-200 text-lg">{formatMoney(totalesSeleccionados.total)}</strong>
-                        </span>
+                      <div className="flex items-center gap-6 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-400 text-sm">VH:</span>
+                          <span className="text-blue-400 font-bold text-lg">{formatMoney(totalesSeleccionados.vh)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-400 text-sm">VC:</span>
+                          <span className="text-emerald-400 font-bold text-lg">{formatMoney(totalesSeleccionados.vc)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 bg-yellow-500/20 px-4 py-2 rounded-xl">
+                          <span className="text-yellow-300 text-sm font-medium">TOTAL:</span>
+                          <span className="text-yellow-300 font-extrabold text-2xl">{formatMoney(totalesSeleccionados.total)}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
                   <button
                     onClick={limpiarSeleccionFacturas}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+                    className="flex items-center gap-2 px-5 py-3 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors shadow-lg"
                   >
                     {Icons.x}
                     Limpiar
