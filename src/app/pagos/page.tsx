@@ -526,8 +526,8 @@ function PagosContent() {
                                 <tr
                                   key={factura.id}
                                   className={`transition-colors ${
-                                    seleccionado ? 'bg-violet-50' : fidx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'
-                                  } hover:bg-violet-50/50`}
+                                    seleccionado ? 'bg-violet-100 border-l-4 border-violet-500' : fidx % 2 === 0 ? 'bg-white hover:bg-slate-100' : 'bg-slate-100 hover:bg-slate-200'
+                                  }`}
                                 >
                                   <td className="px-4 py-3">
                                     <span className={`badge ${factura.empresa === 'VH' ? 'badge-vh' : 'badge-vc'}`}>
