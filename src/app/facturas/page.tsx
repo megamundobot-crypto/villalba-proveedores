@@ -72,6 +72,9 @@ export default function FacturasPage() {
   const [ordenarPor, setOrdenarPor] = useState<'dias' | 'proveedor' | 'empresa' | 'numero' | 'fecha' | 'total' | 'saldo'>('dias')
   const [ordenAsc, setOrdenAsc] = useState(false)
 
+  // Selección de facturas
+  const [facturasSeleccionadas, setFacturasSeleccionadas] = useState<number[]>([])
+
   const [formData, setFormData] = useState({
     proveedor_id: '',
     empresa: 'VH' as 'VH' | 'VC',
@@ -152,6 +155,38 @@ export default function FacturasPage() {
       setOrdenarPor(columna)
       setOrdenAsc(columna === 'proveedor' || columna === 'numero') // A-Z por defecto para texto
     }
+  }
+
+  // Funciones de selección
+  const toggleFacturaSeleccionada = (facturaId: number) => {
+    setFacturasSeleccionadas(prev =>
+      prev.includes(facturaId)
+        ? prev.filter(id => id !== facturaId)
+        : [...prev, facturaId]
+    )
+  }
+
+  const toggleSeleccionarTodas = () => {
+    if (facturasSeleccionadas.length === facturasFiltradas.length) {
+      setFacturasSeleccionadas([])
+    } else {
+      setFacturasSeleccionadas(facturasFiltradas.map(f => f.id))
+    }
+  }
+
+  const limpiarSeleccion = () => {
+    setFacturasSeleccionadas([])
+  }
+
+  // Calcular totales de facturas seleccionadas
+  const totalesSeleccionados = {
+    cantidad: facturasSeleccionadas.length,
+    monto: facturasFiltradas
+      .filter(f => facturasSeleccionadas.includes(f.id))
+      .reduce((sum, f) => sum + f.monto_total, 0),
+    saldo: facturasFiltradas
+      .filter(f => facturasSeleccionadas.includes(f.id))
+      .reduce((sum, f) => sum + Number(f.saldo_pendiente || 0), 0)
   }
 
   async function loadData() {
@@ -413,12 +448,54 @@ export default function FacturasPage() {
             </div>
           </div>
 
+          {/* Panel de selección */}
+          {facturasSeleccionadas.length > 0 && (
+            <div className="card-premium p-4 mb-6 animate-fadeIn bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-600 text-white shadow-lg">
+                    <span className="text-lg font-bold">{totalesSeleccionados.cantidad}</span>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-indigo-800">
+                      {totalesSeleccionados.cantidad === 1 ? 'Factura seleccionada' : 'Facturas seleccionadas'}
+                    </p>
+                    <div className="flex items-center gap-4 mt-1">
+                      <span className="text-sm text-slate-600">
+                        Total: <strong className="text-indigo-700">{formatMoney(totalesSeleccionados.monto)}</strong>
+                      </span>
+                      <span className="text-sm text-slate-600">
+                        Saldo: <strong className="text-red-600">{formatMoney(totalesSeleccionados.saldo)}</strong>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={limpiarSeleccion}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  {Icons.x}
+                  Limpiar selección
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Tabla de facturas */}
           <div className="card-premium overflow-hidden animate-slideUp">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="bg-slate-100 border-b-2 border-slate-200">
+                    <th className="px-4 py-4 w-12">
+                      <input
+                        type="checkbox"
+                        checked={facturasFiltradas.length > 0 && facturasSeleccionadas.length === facturasFiltradas.length}
+                        onChange={toggleSeleccionarTodas}
+                        className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        title={facturasSeleccionadas.length === facturasFiltradas.length ? 'Deseleccionar todas' : 'Seleccionar todas'}
+                      />
+                    </th>
                     <th
                       className="px-5 py-4 text-left cursor-pointer hover:bg-slate-200 transition-colors group"
                       onClick={() => handleSort('dias')}
@@ -504,9 +581,19 @@ export default function FacturasPage() {
                     <tr
                       key={factura.id}
                       className={`transition-colors ${
-                        idx % 2 === 0 ? 'bg-white hover:bg-indigo-50' : 'bg-slate-100 hover:bg-indigo-100'
+                        facturasSeleccionadas.includes(factura.id)
+                          ? 'bg-indigo-100 hover:bg-indigo-150 border-l-4 border-indigo-500'
+                          : idx % 2 === 0 ? 'bg-white hover:bg-indigo-50' : 'bg-slate-100 hover:bg-indigo-100'
                       }`}
                     >
+                      <td className="px-4 py-4">
+                        <input
+                          type="checkbox"
+                          checked={facturasSeleccionadas.includes(factura.id)}
+                          onChange={() => toggleFacturaSeleccionada(factura.id)}
+                          className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="px-5 py-4">
                         <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${
                           factura.alerta === 'verde' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :

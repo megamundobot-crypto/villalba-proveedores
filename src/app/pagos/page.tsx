@@ -69,6 +69,11 @@ const Icons = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   ),
+  warning: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+  ),
 }
 
 interface FacturaConPagos extends Factura {
@@ -109,6 +114,13 @@ function PagosContent() {
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [generatingTxt, setGeneratingTxt] = useState(false)
 
+  // Ordenamiento por columnas
+  const [ordenarPor, setOrdenarPor] = useState<'nombre' | 'vh' | 'vc' | 'total'>('total')
+  const [ordenAsc, setOrdenAsc] = useState(false)
+
+  // Empresa bloqueada para TXT
+  const [empresaBloqueada, setEmpresaBloqueada] = useState<'VH' | 'VC' | null>(null)
+
   const CBU_VC = '3110003611000000296085'
   const CBU_VH = '3110030211000006923105'
 
@@ -136,8 +148,49 @@ function PagosContent() {
     } else if (filtroEmpresa === 'VC') {
       filtered = filtered.filter(p => p.total_vc > 0)
     }
+
+    // Ordenamiento dinámico
+    filtered.sort((a, b) => {
+      let comparison = 0
+      switch (ordenarPor) {
+        case 'nombre':
+          comparison = a.nombre.localeCompare(b.nombre)
+          break
+        case 'vh':
+          comparison = b.total_vh - a.total_vh
+          break
+        case 'vc':
+          comparison = b.total_vc - a.total_vc
+          break
+        case 'total':
+        default:
+          comparison = b.total - a.total
+          break
+      }
+      return ordenAsc ? -comparison : comparison
+    })
+
     setProveedoresFiltrados(filtered)
-  }, [proveedores, busqueda, filtroEmpresa])
+  }, [proveedores, busqueda, filtroEmpresa, ordenarPor, ordenAsc])
+
+  // Detectar empresa bloqueada cuando hay pagos seleccionados
+  useEffect(() => {
+    if (pagosSeleccionados.length === 0) {
+      setEmpresaBloqueada(null)
+    } else {
+      const primeraEmpresa = pagosSeleccionados[0].cuenta_origen
+      setEmpresaBloqueada(primeraEmpresa)
+    }
+  }, [pagosSeleccionados])
+
+  const handleSort = (columna: 'nombre' | 'vh' | 'vc' | 'total') => {
+    if (ordenarPor === columna) {
+      setOrdenAsc(!ordenAsc)
+    } else {
+      setOrdenarPor(columna)
+      setOrdenAsc(columna === 'nombre')
+    }
+  }
 
   async function loadData() {
     setLoading(true)
@@ -222,6 +275,13 @@ function PagosContent() {
   }
 
   function agregarPago(factura: FacturaConPagos, tipo: 'cancela' | 'a_cuenta', montoCustom?: number) {
+    // Verificar si la empresa es diferente a la bloqueada
+    const empresaFactura = factura.empresa as 'VH' | 'VC'
+    if (empresaBloqueada && empresaBloqueada !== empresaFactura) {
+      alert(`⚠️ ADVERTENCIA: No podés mezclar facturas de VH y VC en el mismo lote de pagos.\n\nYa tenés facturas de ${empresaBloqueada === 'VH' ? 'Villalba Hermanos' : 'Villalba Cristino'} seleccionadas.\n\nPrimero generá el TXT actual o limpiá la selección.`)
+      return
+    }
+
     const existe = pagosSeleccionados.find(p => p.factura.id === factura.id)
     if (existe) {
       setPagosSeleccionados(prev => prev.map(p =>
@@ -251,12 +311,6 @@ function PagosContent() {
     ))
   }
 
-  function actualizarCuentaOrigen(facturaId: number, cuenta: 'VC' | 'VH') {
-    setPagosSeleccionados(prev => prev.map(p =>
-      p.factura.id === facturaId ? { ...p, cuenta_origen: cuenta } : p
-    ))
-  }
-
   function limpiarCarrito() {
     setPagosSeleccionados([])
   }
@@ -265,71 +319,57 @@ function PagosContent() {
     return pagosSeleccionados.some(p => p.factura.id === facturaId)
   }
 
-  function getPagoSeleccionado(facturaId: number): PagoSeleccionado | undefined {
-    return pagosSeleccionados.find(p => p.factura.id === facturaId)
-  }
-
-  const pagosPorCuenta = {
-    VC: pagosSeleccionados.filter(p => p.cuenta_origen === 'VC'),
-    VH: pagosSeleccionados.filter(p => p.cuenta_origen === 'VH')
-  }
-
-  const totalVC = pagosPorCuenta.VC.reduce((sum, p) => sum + p.monto, 0)
-  const totalVH = pagosPorCuenta.VH.reduce((sum, p) => sum + p.monto, 0)
-  const totalGeneral = totalVC + totalVH
+  const totalGeneral = pagosSeleccionados.reduce((sum, p) => sum + p.monto, 0)
 
   async function confirmarYGenerarTxt() {
+    if (pagosSeleccionados.length === 0) return
+
     setGeneratingTxt(true)
     const fecha = new Date()
     const fechaStr = `${fecha.getDate().toString().padStart(2, '0')}${(fecha.getMonth() + 1).toString().padStart(2, '0')}${fecha.getFullYear().toString().slice(-2)}`
-    const archivosGenerados: { nombre: string, contenido: string }[] = []
 
-    for (const cuenta of ['VC', 'VH'] as const) {
-      const pagos = pagosPorCuenta[cuenta]
-      if (pagos.length === 0) continue
+    const cuenta = empresaBloqueada || 'VC'
+    const CBU_ORIGEN = cuenta === 'VC' ? CBU_VC : CBU_VH
+    const lineas: string[] = []
+    const pagosPorProveedor: Record<string, { cbu: string, monto: number, facturas: string[], concepto: string }> = {}
 
-      const CBU_ORIGEN = cuenta === 'VC' ? CBU_VC : CBU_VH
-      const lineas: string[] = []
-      const pagosPorProveedor: Record<string, { cbu: string, monto: number, facturas: string[], concepto: string }> = {}
-
-      for (const pago of pagos) {
-        const cbu = pago.factura.cbu_principal || ''
-        if (!cbu) continue
-        if (!pagosPorProveedor[cbu]) {
-          pagosPorProveedor[cbu] = { cbu, monto: 0, facturas: [], concepto: pago.tipo === 'cancela' ? 'CANCELA' : 'A CUENTA' }
-        }
-        pagosPorProveedor[cbu].monto += pago.monto
-        pagosPorProveedor[cbu].facturas.push(pago.factura.numero)
-        if (pago.tipo === 'a_cuenta') {
-          pagosPorProveedor[cbu].concepto = 'A CUENTA'
-        }
+    for (const pago of pagosSeleccionados) {
+      const cbu = pago.factura.cbu_principal || ''
+      if (!cbu) continue
+      if (!pagosPorProveedor[cbu]) {
+        pagosPorProveedor[cbu] = { cbu, monto: 0, facturas: [], concepto: pago.tipo === 'cancela' ? 'CANCELA' : 'A CUENTA' }
       }
-
-      for (const [cbu, data] of Object.entries(pagosPorProveedor)) {
-        const montoEnCentavos = Math.round(data.monto * 100)
-        const referencia = `FAC ${data.facturas.join(' ')}`
-        const linea =
-          CBU_ORIGEN +
-          cbu +
-          ' '.repeat(44) +
-          montoEnCentavos.toString().padStart(12, '0') +
-          data.concepto.padEnd(50) +
-          referencia.padEnd(50) +
-          ' '.repeat(15) +
-          '1'
-        lineas.push(linea)
+      pagosPorProveedor[cbu].monto += pago.monto
+      pagosPorProveedor[cbu].facturas.push(pago.factura.numero)
+      if (pago.tipo === 'a_cuenta') {
+        pagosPorProveedor[cbu].concepto = 'A CUENTA'
       }
-
-      const totalLineas = lineas.length + 1
-      const totalCentavos = Math.round(pagos.reduce((sum, p) => sum + p.monto, 0) * 100)
-      const trailer = totalLineas.toString().padStart(5, '0') +
-        totalCentavos.toString().padStart(17, '0') +
-        ' '.repeat(216 - 22)
-      lineas.push(trailer)
-      const contenido = lineas.join('\r\n') + '\r\n'
-      archivosGenerados.push({ nombre: `transfer_${cuenta}_${fechaStr}.txt`, contenido })
     }
 
+    for (const [cbu, data] of Object.entries(pagosPorProveedor)) {
+      const montoEnCentavos = Math.round(data.monto * 100)
+      const referencia = `FAC ${data.facturas.join(' ')}`
+      const linea =
+        CBU_ORIGEN +
+        cbu +
+        ' '.repeat(44) +
+        montoEnCentavos.toString().padStart(12, '0') +
+        data.concepto.padEnd(50) +
+        referencia.padEnd(50) +
+        ' '.repeat(15) +
+        '1'
+      lineas.push(linea)
+    }
+
+    const totalLineas = lineas.length + 1
+    const totalCentavos = Math.round(pagosSeleccionados.reduce((sum, p) => sum + p.monto, 0) * 100)
+    const trailer = totalLineas.toString().padStart(5, '0') +
+      totalCentavos.toString().padStart(17, '0') +
+      ' '.repeat(216 - 22)
+    lineas.push(trailer)
+    const contenido = lineas.join('\r\n') + '\r\n'
+
+    // Registrar pagos en BD
     for (const pago of pagosSeleccionados) {
       await supabase.from('pagos').insert([{
         factura_id: pago.factura.id,
@@ -340,17 +380,16 @@ function PagosContent() {
       }])
     }
 
-    for (const archivo of archivosGenerados) {
-      const blob = new Blob([archivo.contenido], { type: 'text/plain;charset=latin1' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = archivo.nombre
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    }
+    // Descargar archivo
+    const blob = new Blob([contenido], { type: 'text/plain;charset=latin1' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `transfer_${cuenta}_${fechaStr}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
 
     setGeneratingTxt(false)
     setShowConfirmModal(false)
@@ -374,6 +413,12 @@ function PagosContent() {
     if (dias <= 30) return 'bg-emerald-100 text-emerald-700 border-emerald-200'
     if (dias <= 40) return 'bg-amber-100 text-amber-700 border-amber-200'
     return 'bg-red-100 text-red-700 border-red-200'
+  }
+
+  // Verificar si una factura puede agregarse
+  const puedeAgregar = (factura: FacturaConPagos) => {
+    if (!empresaBloqueada) return true
+    return factura.empresa === empresaBloqueada
   }
 
   if (loading) {
@@ -428,6 +473,23 @@ function PagosContent() {
                 </div>
               </div>
 
+              {/* Advertencia de empresa bloqueada */}
+              {empresaBloqueada && (
+                <div className={`p-4 rounded-xl border-2 flex items-center gap-3 animate-fadeIn ${
+                  empresaBloqueada === 'VH' ? 'bg-blue-50 border-blue-300' : 'bg-emerald-50 border-emerald-300'
+                }`}>
+                  {Icons.warning}
+                  <div>
+                    <p className={`font-semibold ${empresaBloqueada === 'VH' ? 'text-blue-700' : 'text-emerald-700'}`}>
+                      Modo {empresaBloqueada === 'VH' ? 'Villalba Hermanos' : 'Villalba Cristino'}
+                    </p>
+                    <p className="text-sm text-slate-600">
+                      Solo podés agregar facturas de {empresaBloqueada}. Para cambiar, limpiá la selección actual.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Filtros */}
               <div className="card-premium p-4 animate-fadeIn" style={{animationDelay: '0.1s'}}>
                 <div className="flex flex-col sm:flex-row gap-3">
@@ -459,140 +521,188 @@ function PagosContent() {
                 </div>
               </div>
 
-              {/* Lista de proveedores */}
-              <div className="space-y-3">
-                {proveedoresFiltrados.map((proveedor, idx) => (
-                  <div
-                    key={proveedor.id}
-                    id={`proveedor-${proveedor.id}`}
-                    className="card-premium overflow-hidden animate-slideUp"
-                    style={{animationDelay: `${0.15 + idx * 0.03}s`}}
-                  >
-                    <div
-                      className={`p-4 cursor-pointer transition-colors ${
-                        expandedProveedores.has(proveedor.id) ? 'bg-violet-50' : 'hover:bg-slate-50'
-                      }`}
-                      onClick={() => toggleProveedor(proveedor.id)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className={`transition-transform ${expandedProveedores.has(proveedor.id) ? 'text-violet-600' : 'text-slate-400'}`}>
-                            {expandedProveedores.has(proveedor.id) ? Icons.chevronDown : Icons.chevronRight}
+              {/* Tabla de proveedores con headers ordenables */}
+              <div className="card-premium overflow-hidden animate-slideUp" style={{animationDelay: '0.15s'}}>
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-100 border-b-2 border-slate-200">
+                      <th className="w-10 px-4 py-3"></th>
+                      <th
+                        className="px-4 py-3 text-left cursor-pointer hover:bg-slate-200 transition-colors group"
+                        onClick={() => handleSort('nombre')}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Proveedor</span>
+                          <span className={`transition-all ${ordenarPor === 'nombre' ? 'text-indigo-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                            {ordenarPor === 'nombre' ? (ordenAsc ? '↑' : '↓') : '↕'}
                           </span>
-                          <div>
-                            <h3 className="font-semibold text-slate-800">{proveedor.nombre}</h3>
-                            <p className="text-xs text-slate-500">{proveedor.facturas.length} facturas pendientes</p>
-                          </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          {proveedor.total_vh > 0 && (
-                            <div className="text-right">
-                              <span className="text-xs text-blue-600 font-medium">VH</span>
-                              <p className="font-bold text-blue-700 tabular-nums">{formatMoney(proveedor.total_vh)}</p>
-                            </div>
-                          )}
-                          {proveedor.total_vc > 0 && (
-                            <div className="text-right">
-                              <span className="text-xs text-emerald-600 font-medium">VC</span>
-                              <p className="font-bold text-emerald-700 tabular-nums">{formatMoney(proveedor.total_vc)}</p>
-                            </div>
-                          )}
-                          <div className="text-right pl-4 border-l border-slate-200">
-                            <span className="text-xs text-slate-500">Total</span>
-                            <p className="font-extrabold text-slate-800 tabular-nums">{formatMoney(proveedor.total)}</p>
-                          </div>
+                      </th>
+                      <th
+                        className="px-4 py-3 text-right cursor-pointer hover:bg-slate-200 transition-colors group"
+                        onClick={() => handleSort('vh')}
+                      >
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">Saldo VH</span>
+                          <span className={`transition-all ${ordenarPor === 'vh' ? 'text-blue-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                            {ordenarPor === 'vh' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                          </span>
                         </div>
-                      </div>
-                    </div>
+                      </th>
+                      <th
+                        className="px-4 py-3 text-right cursor-pointer hover:bg-slate-200 transition-colors group"
+                        onClick={() => handleSort('vc')}
+                      >
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Saldo VC</span>
+                          <span className={`transition-all ${ordenarPor === 'vc' ? 'text-emerald-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                            {ordenarPor === 'vc' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                          </span>
+                        </div>
+                      </th>
+                      <th
+                        className="px-4 py-3 text-right cursor-pointer hover:bg-slate-200 transition-colors group"
+                        onClick={() => handleSort('total')}
+                      >
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Total</span>
+                          <span className={`transition-all ${ordenarPor === 'total' ? 'text-indigo-600' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                            {ordenarPor === 'total' ? (ordenAsc ? '↑' : '↓') : '↕'}
+                          </span>
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {proveedoresFiltrados.map((proveedor, idx) => (
+                      <>
+                        <tr
+                          key={proveedor.id}
+                          id={`proveedor-${proveedor.id}`}
+                          className={`cursor-pointer transition-colors ${
+                            expandedProveedores.has(proveedor.id)
+                              ? 'bg-violet-100 border-l-4 border-violet-500'
+                              : idx % 2 === 0
+                                ? 'bg-white hover:bg-violet-50'
+                                : 'bg-slate-100 hover:bg-violet-100'
+                          }`}
+                          onClick={() => toggleProveedor(proveedor.id)}
+                        >
+                          <td className="px-4 py-4">
+                            <span className={`transition-transform inline-block ${expandedProveedores.has(proveedor.id) ? 'rotate-90 text-violet-600' : 'text-slate-400'}`}>
+                              {Icons.chevronRight}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4">
+                            <p className="font-semibold text-slate-800">{proveedor.nombre}</p>
+                            <p className="text-xs text-slate-500">{proveedor.facturas.length} facturas</p>
+                          </td>
+                          <td className="px-4 py-4 text-right">
+                            {proveedor.total_vh > 0
+                              ? <span className="font-bold text-blue-600 tabular-nums">{formatMoney(proveedor.total_vh)}</span>
+                              : <span className="text-slate-300">—</span>
+                            }
+                          </td>
+                          <td className="px-4 py-4 text-right">
+                            {proveedor.total_vc > 0
+                              ? <span className="font-bold text-emerald-600 tabular-nums">{formatMoney(proveedor.total_vc)}</span>
+                              : <span className="text-slate-300">—</span>
+                            }
+                          </td>
+                          <td className="px-4 py-4 text-right">
+                            <span className="font-extrabold text-slate-800 tabular-nums">{formatMoney(proveedor.total)}</span>
+                          </td>
+                        </tr>
 
-                    {expandedProveedores.has(proveedor.id) && (
-                      <div className="border-t border-slate-200">
-                        <table className="w-full text-sm">
-                          <thead className="bg-slate-100">
-                            <tr>
-                              <th className="px-4 py-3 text-left font-bold text-slate-600 text-xs uppercase">Emp</th>
-                              <th className="px-4 py-3 text-left font-bold text-slate-600 text-xs uppercase">Factura</th>
-                              <th className="px-4 py-3 text-left font-bold text-slate-600 text-xs uppercase">Fecha</th>
-                              <th className="px-4 py-3 text-right font-bold text-slate-600 text-xs uppercase">Saldo</th>
-                              <th className="px-4 py-3 text-center font-bold text-slate-600 text-xs uppercase">Días</th>
-                              <th className="px-4 py-3 text-center font-bold text-slate-600 text-xs uppercase">Acciones</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {proveedor.facturas.map((factura, fidx) => {
-                              const dias = getDiasAntiguedad(factura.fecha)
-                              const seleccionado = isPagoSeleccionado(factura.id)
-                              return (
-                                <tr
-                                  key={factura.id}
-                                  className={`transition-colors ${
-                                    seleccionado ? 'bg-violet-100 border-l-4 border-violet-500' : fidx % 2 === 0 ? 'bg-white hover:bg-violet-50' : 'bg-slate-100 hover:bg-violet-100'
-                                  }`}
-                                >
-                                  <td className="px-4 py-3">
-                                    <span className={`badge ${factura.empresa === 'VH' ? 'badge-vh' : 'badge-vc'}`}>
-                                      {factura.empresa}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 font-medium text-slate-800">{factura.numero}</td>
-                                  <td className="px-4 py-3 text-slate-600">{formatDate(factura.fecha)}</td>
-                                  <td className="px-4 py-3 text-right font-bold text-slate-800 tabular-nums">
-                                    {formatMoney(factura.saldo_pendiente)}
-                                  </td>
-                                  <td className="px-4 py-3 text-center">
-                                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getAlertaColor(dias)}`}>
-                                      {dias}d
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <div className="flex items-center justify-center gap-2">
-                                      {seleccionado ? (
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); quitarPago(factura.id) }}
-                                          className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-semibold hover:bg-red-200 transition-colors flex items-center gap-1"
+                        {expandedProveedores.has(proveedor.id) && (
+                          <tr key={`${proveedor.id}-detail`}>
+                            <td colSpan={5} className="p-0">
+                              <div className="bg-slate-50 border-t border-slate-200">
+                                <table className="w-full text-sm">
+                                  <thead className="bg-slate-200/50">
+                                    <tr>
+                                      <th className="px-4 py-2 text-left font-bold text-slate-600 text-xs uppercase">Emp</th>
+                                      <th className="px-4 py-2 text-left font-bold text-slate-600 text-xs uppercase">Factura</th>
+                                      <th className="px-4 py-2 text-left font-bold text-slate-600 text-xs uppercase">Fecha</th>
+                                      <th className="px-4 py-2 text-right font-bold text-slate-600 text-xs uppercase">Saldo</th>
+                                      <th className="px-4 py-2 text-center font-bold text-slate-600 text-xs uppercase">Días</th>
+                                      <th className="px-4 py-2 text-center font-bold text-slate-600 text-xs uppercase">Acción</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {proveedor.facturas.map((factura, fidx) => {
+                                      const dias = getDiasAntiguedad(factura.fecha)
+                                      const seleccionado = isPagoSeleccionado(factura.id)
+                                      const bloqueado = !puedeAgregar(factura) && !seleccionado
+                                      return (
+                                        <tr
+                                          key={factura.id}
+                                          className={`transition-colors ${
+                                            seleccionado
+                                              ? 'bg-violet-100 border-l-4 border-violet-500'
+                                              : bloqueado
+                                                ? 'bg-slate-200/50 opacity-50'
+                                                : fidx % 2 === 0 ? 'bg-white hover:bg-violet-50' : 'bg-slate-100 hover:bg-violet-100'
+                                          }`}
                                         >
-                                          {Icons.x} Quitar
-                                        </button>
-                                      ) : (
-                                        <>
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); agregarPago(factura, 'cancela') }}
-                                            className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold hover:bg-emerald-200 transition-colors disabled:opacity-50"
-                                            disabled={!factura.cbu_principal}
-                                            title={!factura.cbu_principal ? 'Sin CBU' : 'Cancelar'}
-                                          >
-                                            Cancelar
-                                          </button>
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); agregarPago(factura, 'a_cuenta', Math.round(factura.saldo_pendiente / 2)) }}
-                                            className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg text-xs font-semibold hover:bg-amber-200 transition-colors disabled:opacity-50"
-                                            disabled={!factura.cbu_principal}
-                                            title={!factura.cbu_principal ? 'Sin CBU' : 'A Cuenta'}
-                                          >
-                                            A Cuenta
-                                          </button>
-                                        </>
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
-                        {!proveedor.cbu_principal && (
-                          <div className="px-4 py-3 bg-amber-50 border-t border-amber-200 flex items-center gap-2 text-amber-700 text-sm">
-                            {Icons.alert}
-                            <span>Este proveedor no tiene CBU configurado.</span>
-                          </div>
+                                          <td className="px-4 py-2">
+                                            <span className={`badge ${factura.empresa === 'VH' ? 'badge-vh' : 'badge-vc'}`}>
+                                              {factura.empresa}
+                                            </span>
+                                          </td>
+                                          <td className="px-4 py-2 font-medium text-slate-800">{factura.numero}</td>
+                                          <td className="px-4 py-2 text-slate-600">{formatDate(factura.fecha)}</td>
+                                          <td className="px-4 py-2 text-right font-bold text-slate-800 tabular-nums">
+                                            {formatMoney(factura.saldo_pendiente)}
+                                          </td>
+                                          <td className="px-4 py-2 text-center">
+                                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${getAlertaColor(dias)}`}>
+                                              {dias}d
+                                            </span>
+                                          </td>
+                                          <td className="px-4 py-2 text-center">
+                                            {seleccionado ? (
+                                              <button
+                                                onClick={(e) => { e.stopPropagation(); quitarPago(factura.id) }}
+                                                className="px-2 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-semibold hover:bg-red-200 transition-colors"
+                                              >
+                                                Quitar
+                                              </button>
+                                            ) : bloqueado ? (
+                                              <span className="text-xs text-slate-400">Bloqueado</span>
+                                            ) : (
+                                              <button
+                                                onClick={(e) => { e.stopPropagation(); agregarPago(factura, 'cancela') }}
+                                                className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold hover:bg-emerald-200 transition-colors disabled:opacity-50"
+                                                disabled={!factura.cbu_principal}
+                                                title={!factura.cbu_principal ? 'Sin CBU' : 'Agregar'}
+                                              >
+                                                + Agregar
+                                              </button>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      )
+                                    })}
+                                  </tbody>
+                                </table>
+                                {!proveedor.cbu_principal && (
+                                  <div className="px-4 py-2 bg-amber-50 border-t border-amber-200 flex items-center gap-2 text-amber-700 text-sm">
+                                    {Icons.alert}
+                                    <span>Este proveedor no tiene CBU configurado.</span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                      </>
+                    ))}
+                  </tbody>
+                </table>
 
                 {proveedoresFiltrados.length === 0 && (
-                  <div className="card-premium p-16 text-center">
+                  <div className="p-16 text-center">
                     <div className="text-slate-300 mx-auto mb-4">{Icons.search}</div>
                     <p className="text-slate-500 font-medium">No se encontraron proveedores</p>
                   </div>
@@ -603,7 +713,7 @@ function PagosContent() {
             {/* Panel derecho - Carrito */}
             <div className="xl:col-span-1">
               <div className="card-premium sticky top-24 overflow-hidden animate-slideUp" style={{animationDelay: '0.2s'}}>
-                <div className="p-4 bg-gradient-to-r from-violet-600 to-purple-600">
+                <div className={`p-4 ${empresaBloqueada === 'VH' ? 'bg-gradient-to-r from-blue-600 to-blue-700' : empresaBloqueada === 'VC' ? 'bg-gradient-to-r from-emerald-600 to-emerald-700' : 'bg-gradient-to-r from-violet-600 to-purple-600'}`}>
                   <div className="flex items-center justify-between text-white">
                     <div className="flex items-center gap-2">
                       {Icons.creditCard}
@@ -613,6 +723,11 @@ function PagosContent() {
                       {pagosSeleccionados.length} items
                     </span>
                   </div>
+                  {empresaBloqueada && (
+                    <p className="text-white/80 text-xs mt-1">
+                      {empresaBloqueada === 'VH' ? 'Villalba Hermanos SRL' : 'Villalba Cristino'}
+                    </p>
+                  )}
                 </div>
 
                 {pagosSeleccionados.length === 0 ? (
@@ -623,44 +738,39 @@ function PagosContent() {
                   </div>
                 ) : (
                   <>
-                    <div className="max-h-[400px] overflow-y-auto divide-y divide-slate-100">
+                    <div className="max-h-[350px] overflow-y-auto divide-y divide-slate-100">
                       {pagosSeleccionados.map((pago) => (
-                        <div key={pago.factura.id} className="p-4">
-                          <div className="flex items-start justify-between mb-2">
+                        <div key={pago.factura.id} className="p-3">
+                          <div className="flex items-start justify-between mb-1">
                             <div>
                               <p className="font-semibold text-slate-800 text-sm">{pago.factura.proveedor_nombre}</p>
                               <p className="text-xs text-slate-500">FC {pago.factura.numero}</p>
                             </div>
                             <button
                               onClick={() => quitarPago(pago.factura.id)}
-                              className="p-1.5 hover:bg-red-100 rounded-lg text-red-500 transition-colors"
+                              className="p-1 hover:bg-red-100 rounded-lg text-red-500 transition-colors"
                             >
                               {Icons.trash}
                             </button>
                           </div>
 
-                          <div className="flex items-center gap-2 mb-2">
+                          <div className="flex items-center gap-2 mb-1">
                             <select
                               value={pago.tipo}
                               onChange={(e) => {
                                 const tipo = e.target.value as 'cancela' | 'a_cuenta'
                                 agregarPago(pago.factura, tipo, tipo === 'cancela' ? pago.factura.saldo_pendiente : pago.monto)
                               }}
-                              className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 focus:ring-2 focus:ring-violet-500"
+                              className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1 bg-slate-50"
                             >
                               <option value="cancela">Cancela</option>
                               <option value="a_cuenta">A Cuenta</option>
                             </select>
-                            <select
-                              value={pago.cuenta_origen}
-                              onChange={(e) => actualizarCuentaOrigen(pago.factura.id, e.target.value as 'VC' | 'VH')}
-                              className={`text-xs border rounded-lg px-2 py-1.5 font-semibold ${
-                                pago.cuenta_origen === 'VH' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              }`}
-                            >
-                              <option value="VC">VC</option>
-                              <option value="VH">VH</option>
-                            </select>
+                            <span className={`text-xs px-2 py-1 rounded-lg font-semibold ${
+                              pago.cuenta_origen === 'VH' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                            }`}>
+                              {pago.cuenta_origen}
+                            </span>
                           </div>
 
                           <div className="flex items-center gap-2">
@@ -669,47 +779,35 @@ function PagosContent() {
                               type="number"
                               value={pago.monto}
                               onChange={(e) => actualizarMontoPago(pago.factura.id, parseFloat(e.target.value) || 0)}
-                              className="flex-1 text-sm font-bold border border-slate-200 rounded-lg px-2 py-1.5 text-right bg-slate-50 focus:ring-2 focus:ring-violet-500 tabular-nums"
+                              className="flex-1 text-sm font-bold border border-slate-200 rounded-lg px-2 py-1 text-right bg-slate-50 tabular-nums"
                               disabled={pago.tipo === 'cancela'}
                             />
                           </div>
-                          {pago.tipo === 'a_cuenta' && (
-                            <p className="text-xs text-slate-400 mt-1 text-right">
-                              Saldo FC: {formatMoney(pago.factura.saldo_pendiente)}
-                            </p>
-                          )}
                         </div>
                       ))}
                     </div>
 
-                    {/* Totales */}
+                    {/* Total */}
                     <div className="p-4 border-t border-slate-200 bg-slate-50">
-                      {totalVH > 0 && (
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm text-blue-700 font-semibold">Total VH</span>
-                          <span className="font-bold text-blue-700 tabular-nums">{formatMoney(totalVH)}</span>
-                        </div>
-                      )}
-                      {totalVC > 0 && (
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm text-emerald-700 font-semibold">Total VC</span>
-                          <span className="font-bold text-emerald-700 tabular-nums">{formatMoney(totalVC)}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between items-center pt-2 border-t border-slate-300">
-                        <span className="font-bold text-slate-700">TOTAL</span>
-                        <span className="text-xl font-extrabold text-slate-800 tabular-nums">{formatMoney(totalGeneral)}</span>
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-slate-700">TOTAL SELECCIONADO</span>
+                        <span className="text-2xl font-extrabold text-slate-800 tabular-nums">{formatMoney(totalGeneral)}</span>
                       </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {pagosSeleccionados.length} factura(s) de {empresaBloqueada === 'VH' ? 'Villalba Hermanos' : 'Villalba Cristino'}
+                      </p>
                     </div>
 
                     {/* Acciones */}
                     <div className="p-4 border-t border-slate-200 space-y-2">
                       <button
                         onClick={() => setShowConfirmModal(true)}
-                        className="w-full btn-primary py-3 flex items-center justify-center gap-2"
+                        className={`w-full py-3 flex items-center justify-center gap-2 font-semibold rounded-xl text-white transition-all ${
+                          empresaBloqueada === 'VH' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                        }`}
                       >
                         {Icons.download}
-                        Confirmar y Generar TXT
+                        Generar TXT {empresaBloqueada}
                       </button>
                       <button
                         onClick={limpiarCarrito}
@@ -729,49 +827,40 @@ function PagosContent() {
         {showConfirmModal && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg animate-scaleIn">
-              <div className="p-6 border-b border-slate-200">
-                <h2 className="text-xl font-bold text-slate-800">Confirmar Pagos</h2>
-                <p className="text-slate-500 mt-1">Se registrarán los pagos y se generarán los archivos TXT</p>
+              <div className={`p-6 border-b border-slate-200 ${
+                empresaBloqueada === 'VH' ? 'bg-gradient-to-r from-blue-600 to-blue-700' : 'bg-gradient-to-r from-emerald-600 to-emerald-700'
+              } rounded-t-2xl`}>
+                <h2 className="text-xl font-bold text-white">Confirmar Pagos</h2>
+                <p className="text-white/80 mt-1">
+                  {empresaBloqueada === 'VH' ? 'Villalba Hermanos SRL' : 'Villalba Cristino'}
+                </p>
               </div>
 
               <div className="p-6 space-y-4">
                 <div className="bg-slate-50 rounded-xl p-4">
                   <p className="text-sm text-slate-600 mb-3 font-medium">Resumen de pagos:</p>
-                  <div className="space-y-2">
-                    {totalVC > 0 && (
-                      <div className="flex justify-between items-center p-3 bg-emerald-50 rounded-xl border border-emerald-200">
-                        <div className="flex items-center gap-2">
-                          <span className="text-emerald-600">{Icons.building}</span>
-                          <span className="font-semibold text-emerald-700">Villalba Cristino</span>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-emerald-700 tabular-nums">{formatMoney(totalVC)}</p>
-                          <p className="text-xs text-emerald-600">{pagosPorCuenta.VC.length} transferencias</p>
-                        </div>
-                      </div>
-                    )}
-                    {totalVH > 0 && (
-                      <div className="flex justify-between items-center p-3 bg-blue-50 rounded-xl border border-blue-200">
-                        <div className="flex items-center gap-2">
-                          <span className="text-blue-600">{Icons.building}</span>
-                          <span className="font-semibold text-blue-700">Villalba Hermanos</span>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-blue-700 tabular-nums">{formatMoney(totalVH)}</p>
-                          <p className="text-xs text-blue-600">{pagosPorCuenta.VH.length} transferencias</p>
-                        </div>
-                      </div>
-                    )}
+                  <div className={`flex justify-between items-center p-3 rounded-xl border ${
+                    empresaBloqueada === 'VH' ? 'bg-blue-50 border-blue-200' : 'bg-emerald-50 border-emerald-200'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <span className={empresaBloqueada === 'VH' ? 'text-blue-600' : 'text-emerald-600'}>{Icons.building}</span>
+                      <span className={`font-semibold ${empresaBloqueada === 'VH' ? 'text-blue-700' : 'text-emerald-700'}`}>
+                        {empresaBloqueada === 'VH' ? 'Villalba Hermanos' : 'Villalba Cristino'}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-bold tabular-nums ${empresaBloqueada === 'VH' ? 'text-blue-700' : 'text-emerald-700'}`}>
+                        {formatMoney(totalGeneral)}
+                      </p>
+                      <p className={`text-xs ${empresaBloqueada === 'VH' ? 'text-blue-600' : 'text-emerald-600'}`}>
+                        {pagosSeleccionados.length} transferencias
+                      </p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center p-4 bg-gradient-to-r from-violet-50 to-purple-50 rounded-xl border border-violet-200">
-                  <span className="font-bold text-violet-700">Total General</span>
-                  <span className="text-2xl font-extrabold text-violet-800 tabular-nums">{formatMoney(totalGeneral)}</span>
-                </div>
-
                 <p className="text-sm text-slate-500">
-                  Se generarán {(totalVC > 0 ? 1 : 0) + (totalVH > 0 ? 1 : 0)} archivo(s) TXT para cargar en el banco.
+                  Se generará 1 archivo TXT para cargar en el banco de {empresaBloqueada === 'VH' ? 'Villalba Hermanos' : 'Villalba Cristino'}.
                 </p>
               </div>
 
@@ -786,7 +875,9 @@ function PagosContent() {
                 <button
                   onClick={confirmarYGenerarTxt}
                   disabled={generatingTxt}
-                  className="flex-1 btn-primary py-3 flex items-center justify-center gap-2"
+                  className={`flex-1 py-3 flex items-center justify-center gap-2 font-semibold rounded-xl text-white ${
+                    empresaBloqueada === 'VH' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
                 >
                   {generatingTxt ? (
                     <>

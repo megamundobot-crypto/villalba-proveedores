@@ -68,6 +68,11 @@ const Icons = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
     </svg>
   ),
+  x: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  ),
 }
 
 export default function Dashboard() {
@@ -84,6 +89,9 @@ export default function Dashboard() {
   const [filtroEmpresa, setFiltroEmpresa] = useState<'todos' | 'VH' | 'VC'>('todos')
   const [ordenarPor, setOrdenarPor] = useState<'nombre' | 'vh' | 'vc' | 'total'>('total')
   const [ordenAsc, setOrdenAsc] = useState(false)
+
+  // Selección de proveedores
+  const [proveedoresSeleccionados, setProveedoresSeleccionados] = useState<number[]>([])
 
   useEffect(() => {
     loadData()
@@ -129,6 +137,42 @@ export default function Dashboard() {
       setOrdenarPor(columna)
       setOrdenAsc(columna === 'nombre') // A-Z por defecto para nombre, mayor a menor para números
     }
+  }
+
+  // Funciones de selección
+  const toggleProveedorSeleccionado = (proveedorId: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setProveedoresSeleccionados(prev =>
+      prev.includes(proveedorId)
+        ? prev.filter(id => id !== proveedorId)
+        : [...prev, proveedorId]
+    )
+  }
+
+  const toggleSeleccionarTodos = () => {
+    if (proveedoresSeleccionados.length === saldosFiltrados.length) {
+      setProveedoresSeleccionados([])
+    } else {
+      setProveedoresSeleccionados(saldosFiltrados.map(p => p.id))
+    }
+  }
+
+  const limpiarSeleccion = () => {
+    setProveedoresSeleccionados([])
+  }
+
+  // Calcular totales de proveedores seleccionados
+  const totalesSeleccionados = {
+    cantidad: proveedoresSeleccionados.length,
+    vh: saldosFiltrados
+      .filter(p => proveedoresSeleccionados.includes(p.id))
+      .reduce((sum, p) => sum + p.saldo_vh, 0),
+    vc: saldosFiltrados
+      .filter(p => proveedoresSeleccionados.includes(p.id))
+      .reduce((sum, p) => sum + p.saldo_vc, 0),
+    total: saldosFiltrados
+      .filter(p => proveedoresSeleccionados.includes(p.id))
+      .reduce((sum, p) => sum + p.saldo_total, 0)
   }
 
   async function loadData() {
@@ -388,6 +432,42 @@ export default function Dashboard() {
             ))}
           </div>
 
+          {/* Panel de selección */}
+          {proveedoresSeleccionados.length > 0 && (
+            <div className="card-premium p-4 mb-6 animate-fadeIn bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-600 text-white shadow-lg">
+                    <span className="text-lg font-bold">{totalesSeleccionados.cantidad}</span>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-indigo-800">
+                      {totalesSeleccionados.cantidad === 1 ? 'Proveedor seleccionado' : 'Proveedores seleccionados'}
+                    </p>
+                    <div className="flex items-center gap-4 mt-1 flex-wrap">
+                      <span className="text-sm text-slate-600">
+                        VH: <strong className="text-blue-600">{formatMoney(totalesSeleccionados.vh)}</strong>
+                      </span>
+                      <span className="text-sm text-slate-600">
+                        VC: <strong className="text-emerald-600">{formatMoney(totalesSeleccionados.vc)}</strong>
+                      </span>
+                      <span className="text-sm text-slate-600">
+                        Total: <strong className="text-indigo-700">{formatMoney(totalesSeleccionados.total)}</strong>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={limpiarSeleccion}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  {Icons.x}
+                  Limpiar selección
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Table */}
           <div className="card-premium overflow-hidden animate-slideUp" style={{animationDelay: '0.3s'}}>
             <div className="p-5 border-b border-slate-100">
@@ -414,6 +494,15 @@ export default function Dashboard() {
               <table className="w-full">
                 <thead>
                   <tr className="bg-slate-100 border-b-2 border-slate-200">
+                    <th className="px-4 py-4 w-12">
+                      <input
+                        type="checkbox"
+                        checked={saldosFiltrados.length > 0 && proveedoresSeleccionados.length === saldosFiltrados.length}
+                        onChange={toggleSeleccionarTodos}
+                        className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        title={proveedoresSeleccionados.length === saldosFiltrados.length ? 'Deseleccionar todos' : 'Seleccionar todos'}
+                      />
+                    </th>
                     <th
                       className="px-6 py-4 text-left cursor-pointer hover:bg-slate-200 transition-colors group"
                       onClick={(e) => { e.stopPropagation(); handleSort('nombre') }}
@@ -467,14 +556,25 @@ export default function Dashboard() {
                       <tr
                         key={prov.id}
                         className={`cursor-pointer transition-colors ${
-                          expandedProveedor === prov.id
-                            ? 'bg-indigo-100 border-l-4 border-indigo-500'
-                            : idx % 2 === 0
-                              ? 'bg-white hover:bg-indigo-50'
-                              : 'bg-slate-100 hover:bg-indigo-100'
+                          proveedoresSeleccionados.includes(prov.id)
+                            ? 'bg-indigo-100 hover:bg-indigo-150 border-l-4 border-indigo-500'
+                            : expandedProveedor === prov.id
+                              ? 'bg-indigo-50 border-l-4 border-indigo-400'
+                              : idx % 2 === 0
+                                ? 'bg-white hover:bg-indigo-50'
+                                : 'bg-slate-100 hover:bg-indigo-100'
                         }`}
                         onClick={() => toggleProveedor(prov.id)}
                       >
+                        <td className="px-4 py-5">
+                          <input
+                            type="checkbox"
+                            checked={proveedoresSeleccionados.includes(prov.id)}
+                            onChange={(e) => { e.stopPropagation(); toggleProveedorSeleccionado(prov.id, e as any) }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          />
+                        </td>
                         <td className="px-6 py-5">
                           <span className="text-base font-semibold text-slate-800">{prov.nombre}</span>
                         </td>
@@ -500,7 +600,7 @@ export default function Dashboard() {
                         </td>
                       </tr>
                       {expandedProveedor === prov.id && (
-                        <tr><td colSpan={5} className="p-0 bg-slate-50/80">
+                        <tr><td colSpan={6} className="p-0 bg-slate-50/80">
                           <div className="p-6 border-l-4 border-indigo-500">
                             <div className="flex items-center justify-between mb-4">
                               <h4 className="font-semibold text-slate-700">Facturas Pendientes</h4>
