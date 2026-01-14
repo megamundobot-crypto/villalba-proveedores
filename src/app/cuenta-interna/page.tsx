@@ -90,72 +90,78 @@ export default function CuentaInternaPage() {
     }
     setProveedoresMap(provMap)
 
-    // Cargar datos de cuenta_interna (donde están los registros importados)
+    // Cargar FACTURAS con saldo pendiente (la fuente real de deudas actuales)
+    const { data: facturasData } = await supabase
+      .from('facturas')
+      .select('id, proveedor_id, empresa, monto_total, numero')
+
+    // Cargar PAGOS para calcular saldos
+    const { data: pagosData } = await supabase
+      .from('pagos')
+      .select('factura_id, monto')
+
+    // Calcular pagos por factura
+    const pagosPorFactura: Record<number, number> = {}
+    if (pagosData) {
+      pagosData.forEach((p: any) => {
+        pagosPorFactura[p.factura_id] = (pagosPorFactura[p.factura_id] || 0) + Number(p.monto)
+      })
+    }
+
+    // Cargar pagos internos desde cuenta_interna
     const { data: cuentaData } = await supabase
       .from('cuenta_interna')
       .select('*')
+      .eq('tipo', 'pago_interno')
       .order('created_at', { ascending: true })
 
-    // Procesar datos - agrupar por nombre de proveedor (extraído de observaciones o por proveedor_id)
-    const proveedores: Record<string, ProveedorResumen> = {}
     const pagosInternosArr: PagoInterno[] = []
-    let idCounter = 1
-
     if (cuentaData) {
       cuentaData.forEach((row: CuentaInternaRow) => {
-        if (row.tipo === 'pago_interno') {
-          // Es un pago interno
-          pagosInternosArr.push({
-            id: row.id,
-            fecha: row.fecha || '',
-            pagador: row.pagador || 'VH',
-            receptor: row.receptor || 'VC',
-            monto: Number(row.monto) || 0,
-            observaciones: row.observaciones,
-            facturas_imputadas: row.facturas_imputadas
-          })
-        } else {
-          // Es una deuda (tipo = 'deuda' o undefined)
-          // Extraer nombre del proveedor de observaciones (formato: "FC 123 - NOMBRE PROVEEDOR")
-          // o usar proveedor_id si existe
-          let provNombre = ''
+        pagosInternosArr.push({
+          id: row.id,
+          fecha: row.fecha || '',
+          pagador: row.pagador || 'VH',
+          receptor: row.receptor || 'VC',
+          monto: Number(row.monto) || 0,
+          observaciones: row.observaciones,
+          facturas_imputadas: row.facturas_imputadas
+        })
+      })
+    }
 
-          if (row.proveedor_id && provMap[row.proveedor_id]) {
-            provNombre = provMap[row.proveedor_id]
-          } else if (row.observaciones) {
-            // Extraer de "FC 123 - NOMBRE PROVEEDOR"
-            const match = row.observaciones.match(/FC \d+ - (.+)$/)
-            if (match) {
-              provNombre = match[1].trim()
-            }
+    // Procesar facturas - agrupar por proveedor con saldos actuales
+    const proveedores: Record<number, ProveedorResumen> = {}
+
+    if (facturasData) {
+      facturasData.forEach((f: any) => {
+        const provId = f.proveedor_id
+        if (!provId) return
+
+        // Calcular saldo pendiente
+        const pagado = pagosPorFactura[f.id] || 0
+        const saldo = Number(f.monto_total) - pagado
+        if (saldo <= 0) return // Factura pagada, no mostrar
+
+        if (!proveedores[provId]) {
+          proveedores[provId] = {
+            id: provId,
+            nombre: provMap[provId] || `Proveedor ${provId}`,
+            vh_debe: 0,
+            vc_debe: 0,
+            total_general: 0,
+            deuda_real_vh: 0,
+            deuda_real_vc: 0
           }
-
-          if (!provNombre) return // Si no hay nombre, ignorar
-
-          // Normalizar nombre (quitar " B" al final para agrupar variantes)
-          const provKey = provNombre.replace(/ B$/, '').toUpperCase()
-
-          if (!proveedores[provKey]) {
-            proveedores[provKey] = {
-              id: idCounter++,
-              nombre: provNombre.replace(/ B$/, ''), // Nombre sin " B"
-              vh_debe: 0,
-              vc_debe: 0,
-              total_general: 0,
-              deuda_real_vh: 0,
-              deuda_real_vc: 0
-            }
-          }
-
-          // debe_vh = lo que VH debe al proveedor (montos de facturas VH)
-          // debe_vc = lo que VC debe al proveedor (montos de facturas VC)
-          const debeVh = Number(row.debe_vh) || 0
-          const debeVc = Number(row.debe_vc) || 0
-
-          proveedores[provKey].vh_debe += debeVh
-          proveedores[provKey].vc_debe += debeVc
-          proveedores[provKey].total_general += debeVh + debeVc
         }
+
+        // Sumar al saldo de VH o VC según empresa
+        if (f.empresa === 'VH') {
+          proveedores[provId].vh_debe += saldo
+        } else {
+          proveedores[provId].vc_debe += saldo
+        }
+        proveedores[provId].total_general += saldo
       })
 
       // Calcular deuda real (65/35 del total de cada proveedor)
