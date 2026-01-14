@@ -76,3 +76,20 @@ export interface CuentaInternaResumen {
   monto_pagado: number
   monto_total: number
 }
+
+export interface CuentaInterna {
+  id: number
+  tipo: 'deuda' | 'pago_interno'
+  factura_id?: number
+  proveedor_id?: number
+  pagador?: 'VH' | 'VC'
+  receptor?: 'VH' | 'VC'
+  debe_vh: number
+  debe_vc: number
+  monto?: number
+  fecha?: string
+  pagado: boolean
+  observaciones?: string
+  facturas_imputadas?: number[]
+  created_at: string
+}

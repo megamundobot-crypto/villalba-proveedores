@@ -373,7 +373,7 @@ export default function Dashboard() {
         )}
 
         {/* Navegación Rápida Premium */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           <Link href="/proveedores" className="group bg-white rounded-xl p-5 shadow-md border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -407,6 +407,18 @@ export default function Dashboard() {
                 <span className="font-semibold text-slate-700">Pagos</span>
               </div>
               <ChevronRight className="h-5 w-5 text-slate-400 group-hover:text-violet-500 transition-colors" />
+            </div>
+          </Link>
+
+          <Link href="/cuenta-interna" className="group bg-white rounded-xl p-5 shadow-md border border-slate-200 hover:border-purple-300 hover:shadow-lg transition-all">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-purple-100 rounded-lg group-hover:bg-purple-200 transition-colors">
+                  <ArrowRightLeft className="h-5 w-5 text-purple-600" />
+                </div>
+                <span className="font-semibold text-slate-700">Cuenta Interna</span>
+              </div>
+              <ChevronRight className="h-5 w-5 text-slate-400 group-hover:text-purple-500 transition-colors" />
             </div>
           </Link>
 
