@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ChatProvider } from "@/contexts/ChatContext";
+import ChatButton from "@/components/ChatButton";
+import ChatPanel from "@/components/ChatPanel";
 
 export const metadata: Metadata = {
   title: "Sistema de Proveedores - Villalba",
@@ -16,7 +19,11 @@ export default function RootLayout({
     <html lang="es">
       <body className="antialiased bg-gray-100 font-sans">
         <AuthProvider>
-          {children}
+          <ChatProvider>
+            {children}
+            <ChatButton />
+            <ChatPanel />
+          </ChatProvider>
         </AuthProvider>
       </body>
     </html>
