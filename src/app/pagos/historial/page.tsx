@@ -142,14 +142,24 @@ export default function HistorialPagosPage() {
     }
 
     const empresa = loteSeleccionado?.empresa === 'VH' ? 'Villalba Hermanos SRL' : 'Villalba Cristino'
-    const tipoTexto = detalle.tipo === 'cancela' ? 'cancela' : 'a cuenta'
+    const tipoTexto = detalle.tipo === 'cancela' ? '✅ Cancela total' : '💰 A cuenta'
 
-    const mensaje = `Hola! Te informamos que se realizó una transferencia por *${formatMoney(detalle.monto)}* correspondiente a la factura *${detalle.factura_numero}* (${tipoTexto}) desde *${empresa}*. Te adjuntamos el comprobante.`
+    const mensaje = `¡Hola! 👋
 
-    // Formato para abrir app de WhatsApp (no web)
-    const url = `whatsapp://send?phone=${detalle.whatsapp}&text=${encodeURIComponent(mensaje)}`
+Te informamos que se realizó una *transferencia bancaria* desde *${empresa}*:
 
-    window.location.href = url
+📄 *Factura:* ${detalle.factura_numero}
+💵 *Monto:* ${formatMoney(detalle.monto)}
+📌 *Concepto:* ${tipoTexto}
+
+Te adjuntamos el comprobante 📎
+
+¡Saludos! 🙌`
+
+    // Usar api.whatsapp.com abre directamente el chat del contacto en la app
+    const url = `https://api.whatsapp.com/send?phone=${detalle.whatsapp}&text=${encodeURIComponent(mensaje)}`
+
+    window.open(url, '_blank')
 
     // Marcar como notificado localmente
     setDetalles(prev => prev.map(d =>
