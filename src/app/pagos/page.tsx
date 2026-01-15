@@ -755,10 +755,15 @@ function PagosContent() {
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-slate-500">$</span>
                             <input
-                              type="number"
-                              step="0.01"
-                              value={pago.monto.toFixed(2)}
-                              onChange={(e) => actualizarMontoPago(pago.factura.id, parseFloat(e.target.value) || 0)}
+                              type="text"
+                              inputMode="numeric"
+                              value={pago.tipo === 'cancela' ? pago.monto.toLocaleString('es-AR', {minimumFractionDigits: 2}) : pago.monto.toString()}
+                              onChange={(e) => {
+                                // Remover todo excepto números
+                                const soloNumeros = e.target.value.replace(/[^\d]/g, '')
+                                actualizarMontoPago(pago.factura.id, parseInt(soloNumeros) || 0)
+                              }}
+                              onFocus={(e) => e.target.select()}
                               className="flex-1 text-sm font-bold border border-slate-200 rounded-lg px-2 py-1 text-right bg-slate-50 tabular-nums"
                               disabled={pago.tipo === 'cancela'}
                             />
