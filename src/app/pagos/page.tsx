@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import UserMenu from '@/components/UserMenu'
+import { BancoIcon } from '@/components/BancoLogo'
+import { getBancoFromCBU } from '@/lib/bancos-argentina'
 
 // Icons inline
 const Icons = {
@@ -742,9 +744,20 @@ function PagosContent() {
                       {pagosSeleccionados.map((pago) => (
                         <div key={pago.factura.id} className="p-3">
                           <div className="flex items-start justify-between mb-1">
-                            <div>
-                              <p className="font-semibold text-slate-800 text-sm">{pago.factura.proveedor_nombre}</p>
-                              <p className="text-xs text-slate-500">FC {pago.factura.numero}</p>
+                            <div className="flex items-start gap-2">
+                              {/* Logo del banco del CBU */}
+                              {pago.factura.cbu_principal && (
+                                <BancoIcon cbu={pago.factura.cbu_principal} size="sm" />
+                              )}
+                              <div>
+                                <p className="font-semibold text-slate-800 text-sm">{pago.factura.proveedor_nombre}</p>
+                                <p className="text-xs text-slate-500">FC {pago.factura.numero}</p>
+                                {pago.factura.cbu_principal && (
+                                  <p className="text-xs text-slate-400">
+                                    {getBancoFromCBU(pago.factura.cbu_principal)?.nombreCorto || 'Banco'}
+                                  </p>
+                                )}
+                              </div>
                             </div>
                             <button
                               onClick={() => quitarPago(pago.factura.id)}

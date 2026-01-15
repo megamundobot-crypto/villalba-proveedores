@@ -5,6 +5,8 @@ import { supabase, Proveedor, CBUProveedor } from '@/lib/supabase'
 import Link from 'next/link'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import UserMenu from '@/components/UserMenu'
+import BancoLogo, { BancoBadge } from '@/components/BancoLogo'
+import { getBancoFromCBU } from '@/lib/bancos-argentina'
 
 // Icons inline
 const Icons = {
@@ -435,10 +437,18 @@ export default function ProveedoresPage() {
                         }`}
                       >
                         <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-mono text-lg font-semibold text-slate-800">{cbu.cbu}</p>
-                            <p className="text-sm text-slate-600 mt-1">{cbu.titular || 'Sin titular'}</p>
-                            <p className="text-sm text-slate-500">{cbu.banco || 'Banco no especificado'}</p>
+                          <div className="flex items-start gap-4">
+                            {/* Logo del banco */}
+                            <BancoLogo cbu={cbu.cbu} size="lg" showName={false} />
+                            <div>
+                              <p className="font-mono text-lg font-semibold text-slate-800">
+                                {cbu.cbu.replace(/(.{4})/g, '$1 ').trim()}
+                              </p>
+                              <p className="text-sm font-medium text-slate-700 mt-1">
+                                {getBancoFromCBU(cbu.cbu)?.nombreCorto || cbu.banco || 'Banco no especificado'}
+                              </p>
+                              <p className="text-sm text-slate-500">{cbu.titular || 'Sin titular'}</p>
+                            </div>
                           </div>
                           <div className="flex items-center gap-2">
                             {cbu.principal ? (
@@ -478,15 +488,40 @@ export default function ProveedoresPage() {
                   <form onSubmit={handleAddCBU} className="space-y-4">
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-1.5">CBU *</label>
-                      <input
-                        type="text"
-                        required
-                        maxLength={22}
-                        value={cbuFormData.cbu}
-                        onChange={e => setCbuFormData({...cbuFormData, cbu: e.target.value.replace(/\D/g, '')})}
-                        className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all font-mono text-lg tracking-wider"
-                        placeholder="22 dígitos"
-                      />
+                      <div className="flex gap-3 items-center">
+                        <input
+                          type="text"
+                          required
+                          maxLength={22}
+                          value={cbuFormData.cbu}
+                          onChange={e => {
+                            const newCbu = e.target.value.replace(/\D/g, '')
+                            setCbuFormData({...cbuFormData, cbu: newCbu})
+                            // Auto-completar nombre del banco
+                            if (newCbu.length >= 3) {
+                              const banco = getBancoFromCBU(newCbu)
+                              if (banco) {
+                                setCbuFormData(prev => ({...prev, cbu: newCbu, banco: banco.nombreCorto}))
+                              }
+                            }
+                          }}
+                          className="flex-1 border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all font-mono text-lg tracking-wider"
+                          placeholder="22 dígitos"
+                        />
+                        {/* Preview del banco detectado */}
+                        {cbuFormData.cbu.length >= 3 && (
+                          <BancoLogo cbu={cbuFormData.cbu} size="lg" showName={false} />
+                        )}
+                      </div>
+                      {/* Mostrar banco detectado */}
+                      {cbuFormData.cbu.length >= 3 && getBancoFromCBU(cbuFormData.cbu) && (
+                        <p className="text-sm text-emerald-600 mt-2 flex items-center gap-2">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Banco detectado: <strong>{getBancoFromCBU(cbuFormData.cbu)?.nombreCorto}</strong>
+                        </p>
+                      )}
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -496,6 +531,7 @@ export default function ProveedoresPage() {
                           value={cbuFormData.banco}
                           onChange={e => setCbuFormData({...cbuFormData, banco: e.target.value})}
                           className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
+                          placeholder={getBancoFromCBU(cbuFormData.cbu)?.nombreCorto || 'Nombre del banco'}
                         />
                       </div>
                       <div>
