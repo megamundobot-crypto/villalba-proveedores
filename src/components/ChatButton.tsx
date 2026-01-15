@@ -7,6 +7,9 @@ export default function ChatButton() {
   const { toggleChat, isOpen, messages, loading } = useChat()
   const { user } = useAuth()
 
+  // IA desactivada temporalmente por costos
+  return null
+
   // No mostrar si no hay usuario logueado
   if (!user) return null
 
