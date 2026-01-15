@@ -140,12 +140,18 @@ export function CBUConBanco({ cbu, className = '' }: { cbu: string; className?: 
 }
 
 // Badge compacto con color del banco
-export function BancoBadge({ cbu }: { cbu: string }) {
+export function BancoBadge({ cbu, size = 'md' }: { cbu: string, size?: 'sm' | 'md' | 'lg' }) {
   const banco = getBancoFromCBU(cbu)
+
+  const sizeStyles = {
+    sm: 'px-1.5 py-0.5 text-[10px]',
+    md: 'px-2 py-0.5 text-xs',
+    lg: 'px-3 py-1 text-sm'
+  }
 
   if (!banco) {
     return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+      <span className={`inline-flex items-center rounded font-medium bg-gray-100 text-gray-600 ${sizeStyles[size]}`}>
         ?
       </span>
     )
@@ -153,7 +159,7 @@ export function BancoBadge({ cbu }: { cbu: string }) {
 
   return (
     <span
-      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white"
+      className={`inline-flex items-center rounded font-medium text-white ${sizeStyles[size]}`}
       style={{ backgroundColor: banco.colorPrimario }}
       title={banco.nombre}
     >
