@@ -157,9 +157,10 @@ Te adjuntamos el comprobante 📎
 ¡Saludos! 🙌`
 
     // Abrir WhatsApp Web directamente en el chat del contacto
+    // Usar nombre fijo 'whatsapp' para reutilizar la misma pestaña
     const url = `https://web.whatsapp.com/send?phone=${detalle.whatsapp}&text=${encodeURIComponent(mensaje)}`
 
-    window.open(url, '_blank')
+    window.open(url, 'whatsapp')
 
     // Marcar como notificado localmente
     setDetalles(prev => prev.map(d =>
