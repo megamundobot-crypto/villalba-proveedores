@@ -73,9 +73,9 @@ export default function NavRapida() {
   const pathname = usePathname()
 
   return (
-    <nav className="bg-slate-700 border-b border-slate-600">
+    <nav className="bg-gradient-to-r from-indigo-800 via-purple-800 to-indigo-800 border-b-2 border-indigo-400 shadow-lg">
       <div className="max-w-7xl mx-auto px-2">
-        <div className="flex items-center gap-1 overflow-x-auto py-1 scrollbar-hide">
+        <div className="flex items-center gap-1 overflow-x-auto py-2 scrollbar-hide">
           {navItems.map((item) => {
             const isActive = pathname === item.href ||
               (item.href !== '/' && pathname?.startsWith(item.href))
@@ -84,10 +84,10 @@ export default function NavRapida() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-all ${
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
                   isActive
-                    ? 'bg-indigo-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-600 hover:text-white'
+                    ? 'bg-white text-indigo-800 shadow-md'
+                    : 'text-white/90 hover:bg-white/20 hover:text-white'
                 }`}
               >
                 {item.icon}
