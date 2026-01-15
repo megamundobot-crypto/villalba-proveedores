@@ -156,10 +156,10 @@ Te adjuntamos el comprobante 📎
 
 ¡Saludos! 🙌`
 
-    // Abrir WhatsApp con el mensaje pre-armado
-    const url = `whatsapp://send?phone=${detalle.whatsapp}&text=${encodeURIComponent(mensaje)}`
+    // Abrir WhatsApp Web directamente en el chat del contacto
+    const url = `https://web.whatsapp.com/send?phone=${detalle.whatsapp}&text=${encodeURIComponent(mensaje)}`
 
-    window.location.href = url
+    window.open(url, '_blank')
 
     // Marcar como notificado localmente
     setDetalles(prev => prev.map(d =>
