@@ -176,6 +176,29 @@ Te adjuntamos el comprobante 📎
     ))
   }
 
+  const [copiado, setCopiado] = useState<number | null>(null)
+
+  const copiarMensaje = (detalle: DetallePago) => {
+    const empresa = loteSeleccionado?.empresa === 'VH' ? 'Villalba Hermanos SRL' : 'Villalba Cristino'
+    const tipoTexto = detalle.tipo === 'cancela' ? '✅ Cancela total' : '💰 A cuenta'
+
+    const mensaje = `¡Hola! 👋
+
+Te informamos que se realizó una *transferencia bancaria* desde *${empresa}*:
+
+📄 *Factura:* ${detalle.factura_numero}
+💵 *Monto:* ${formatMoney(detalle.monto)}
+📌 *Concepto:* ${tipoTexto}
+
+Te adjuntamos el comprobante 📎
+
+¡Saludos! 🙌`
+
+    navigator.clipboard.writeText(mensaje)
+    setCopiado(detalle.id)
+    setTimeout(() => setCopiado(null), 2000)
+  }
+
   const getEstadoBadge = (estado: string) => {
     switch (estado) {
       case 'confirmado':
@@ -464,19 +487,32 @@ Te adjuntamos el comprobante 📎
                           </td>
                           {loteSeleccionado?.estado === 'confirmado' && (
                             <td className="px-3 py-3 text-center">
-                              <button
-                                onClick={() => enviarWhatsApp(detalle)}
-                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                                  detalle.notificado
-                                    ? 'bg-gray-200 text-gray-500'
-                                    : detalle.whatsapp
-                                      ? 'bg-green-500 hover:bg-green-600 text-white'
-                                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                }`}
-                                title={detalle.whatsapp ? `Enviar a ${detalle.whatsapp}` : 'Sin WhatsApp configurado'}
-                              >
-                                {detalle.notificado ? '✓ Enviado' : '📲 WhatsApp'}
-                              </button>
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => copiarMensaje(detalle)}
+                                  className={`px-2 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                                    copiado === detalle.id
+                                      ? 'bg-blue-100 text-blue-600'
+                                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                                  }`}
+                                  title="Copiar mensaje"
+                                >
+                                  {copiado === detalle.id ? '✓' : '📋'}
+                                </button>
+                                <button
+                                  onClick={() => enviarWhatsApp(detalle)}
+                                  className={`px-2 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                                    detalle.notificado
+                                      ? 'bg-gray-200 text-gray-500'
+                                      : detalle.whatsapp
+                                        ? 'bg-green-500 hover:bg-green-600 text-white'
+                                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                  }`}
+                                  title={detalle.whatsapp ? `Enviar a ${detalle.whatsapp}` : 'Sin WhatsApp configurado'}
+                                >
+                                  {detalle.notificado ? '✓' : '📲'}
+                                </button>
+                              </div>
                             </td>
                           )}
                         </tr>
