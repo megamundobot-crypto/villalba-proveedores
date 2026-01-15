@@ -7,6 +7,7 @@ import { useSearchParams } from 'next/navigation'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import UserMenu from '@/components/UserMenu'
 import NavRapida from '@/components/NavRapida'
+import Buscador from '@/components/Buscador'
 import { BancoIcon } from '@/components/BancoLogo'
 import { getBancoFromCBU } from '@/lib/bancos-argentina'
 
@@ -531,16 +532,12 @@ function PagosContent() {
               {/* Filtros */}
               <div className="card-premium p-4 animate-fadeIn" style={{animationDelay: '0.1s'}}>
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="relative flex-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{Icons.search}</span>
-                    <input
-                      type="text"
-                      placeholder="Buscar proveedor..."
-                      value={busqueda}
-                      onChange={(e) => setBusqueda(e.target.value)}
-                      className="input-search w-full"
-                    />
-                  </div>
+                  <Buscador
+                    value={busqueda}
+                    onChange={setBusqueda}
+                    placeholder="Buscar proveedor..."
+                    className="flex-1"
+                  />
                   <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
                     {['todos', 'VH', 'VC'].map((f) => (
                       <button

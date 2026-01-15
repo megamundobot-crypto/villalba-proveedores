@@ -7,6 +7,7 @@ import ProtectedRoute from '@/components/ProtectedRoute'
 import UserMenu from '@/components/UserMenu'
 import BancoLogo, { BancoBadge } from '@/components/BancoLogo'
 import NavRapida from '@/components/NavRapida'
+import Buscador from '@/components/Buscador'
 import { getBancoFromCBU } from '@/lib/bancos-argentina'
 
 // Icons inline
@@ -279,16 +280,12 @@ export default function ProveedoresPage() {
           {/* Filtros y acciones */}
           <div className="card-premium p-5 mb-6 animate-fadeIn" style={{animationDelay: '0.1s'}}>
             <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{Icons.search}</span>
-                <input
-                  type="text"
-                  placeholder="Buscar proveedor..."
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  className="input-search w-full"
-                />
-              </div>
+              <Buscador
+                value={busqueda}
+                onChange={setBusqueda}
+                placeholder="Buscar proveedor..."
+                className="flex-1"
+              />
               <button
                 onClick={openNewModal}
                 className="btn-primary flex items-center justify-center gap-2"

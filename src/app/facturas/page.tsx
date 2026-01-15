@@ -6,6 +6,7 @@ import Link from 'next/link'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import UserMenu from '@/components/UserMenu'
 import NavRapida from '@/components/NavRapida'
+import Buscador from '@/components/Buscador'
 
 // Icons inline
 const Icons = {
@@ -397,16 +398,12 @@ export default function FacturasPage() {
           <div className="card-premium p-5 mb-6 animate-fadeIn">
             <div className="flex flex-col lg:flex-row gap-4">
               {/* Buscador */}
-              <div className="relative flex-1">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{Icons.search}</span>
-                <input
-                  type="text"
-                  placeholder="Buscar por proveedor o número..."
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  className="input-search w-full"
-                />
-              </div>
+              <Buscador
+                value={busqueda}
+                onChange={setBusqueda}
+                placeholder="Buscar por proveedor o número..."
+                className="flex-1"
+              />
 
               {/* Filtro empresa */}
               <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
