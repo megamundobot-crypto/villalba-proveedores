@@ -35,6 +35,9 @@ interface DetallePago {
   notificado?: boolean
 }
 
+// Referencia global a la ventana de WhatsApp
+let whatsappWindow: Window | null = null
+
 export default function HistorialPagosPage() {
   const [lotes, setLotes] = useState<LotePago[]>([])
   const [loteSeleccionado, setLoteSeleccionado] = useState<LotePago | null>(null)
@@ -157,10 +160,15 @@ Te adjuntamos el comprobante 📎
 ¡Saludos! 🙌`
 
     // Abrir WhatsApp Web directamente en el chat del contacto
-    // Usar nombre fijo 'whatsapp' para reutilizar la misma pestaña
     const url = `https://web.whatsapp.com/send?phone=${detalle.whatsapp}&text=${encodeURIComponent(mensaje)}`
 
-    window.open(url, 'whatsapp')
+    // Reutilizar la misma ventana si existe y no está cerrada
+    if (whatsappWindow && !whatsappWindow.closed) {
+      whatsappWindow.location.href = url
+      whatsappWindow.focus()
+    } else {
+      whatsappWindow = window.open(url, 'whatsapp')
+    }
 
     // Marcar como notificado localmente
     setDetalles(prev => prev.map(d =>
