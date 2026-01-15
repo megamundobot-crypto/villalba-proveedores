@@ -5,6 +5,7 @@ import { supabase, SaldoProveedor, CuentaInternaResumen, Factura } from '@/lib/s
 import Link from 'next/link'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import UserMenu from '@/components/UserMenu'
+import Buscador from '@/components/Buscador'
 import { useAuth } from '@/contexts/AuthContext'
 
 interface FacturaConPagos extends Factura {
@@ -478,10 +479,12 @@ export default function Dashboard() {
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div><h2 className="text-lg font-semibold text-slate-800">Saldos por Proveedor</h2><p className="text-sm text-slate-500">Click para ver detalle</p></div>
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{Icons.search}</span>
-                    <input type="text" placeholder="Buscar..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className="input-search w-full sm:w-64" />
-                  </div>
+                  <Buscador
+                    value={busqueda}
+                    onChange={setBusqueda}
+                    placeholder="Buscar..."
+                    className="w-full sm:w-64"
+                  />
                   <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
                     {['todos', 'VH', 'VC'].map((f) => (
                       <button key={f} onClick={() => setFiltroEmpresa(f as any)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filtroEmpresa === f ? f === 'VH' ? 'bg-blue-600 text-white' : f === 'VC' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}>

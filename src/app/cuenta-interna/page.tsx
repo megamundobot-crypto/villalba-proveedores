@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { ArrowLeft, ArrowRightLeft, Building2, FileText, Download, Check, Calendar, DollarSign, Receipt, History, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import Link from 'next/link'
 import NavRapida from '@/components/NavRapida'
+import Buscador from '@/components/Buscador'
 
 interface CuentaInternaRow {
   id: number
@@ -67,6 +68,9 @@ export default function CuentaInternaPage() {
 
   // Tabs
   const [activeTab, setActiveTab] = useState<'resumen' | 'deuda_vh_vc' | 'deuda_vc_vh'>('resumen')
+
+  // Buscador
+  const [busqueda, setBusqueda] = useState('')
 
   useEffect(() => {
     loadData()
@@ -226,7 +230,11 @@ export default function CuentaInternaPage() {
     }
   }
 
-  const proveedoresOrdenados = [...proveedoresResumen].sort((a, b) => {
+  const proveedoresFiltrados = proveedoresResumen.filter(p =>
+    busqueda ? p.nombre.toLowerCase().includes(busqueda.toLowerCase()) : true
+  )
+
+  const proveedoresOrdenados = [...proveedoresFiltrados].sort((a, b) => {
     let comparison = 0
     if (sortField === 'nombre') {
       comparison = a.nombre.localeCompare(b.nombre)
@@ -390,13 +398,19 @@ export default function CuentaInternaPage() {
           <div className="p-6">
             {activeTab === 'resumen' && (
               <div>
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                   <div>
                     <h3 className="text-lg font-semibold text-slate-800">Resumen por Proveedor</h3>
                     <p className="text-sm text-slate-500">
-                      Facturas pendientes actuales • {proveedoresResumen.length} proveedores
+                      Facturas pendientes actuales • {proveedoresFiltrados.length} de {proveedoresResumen.length} proveedores
                     </p>
                   </div>
+                  <Buscador
+                    value={busqueda}
+                    onChange={setBusqueda}
+                    placeholder="Buscar proveedor..."
+                    className="w-full sm:w-64"
+                  />
                 </div>
 
                 <div className="overflow-x-auto">
