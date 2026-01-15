@@ -157,7 +157,7 @@ export default function ConfirmarPagosPage() {
             fecha: new Date().toISOString(),
             monto: redondear(detalle.monto),
             medio_pago: 'transferencia',
-            referencia: `Lote #${loteSeleccionado.id} - ${loteSeleccionado.archivo_txt}`,
+            referencia_banco: `Lote #${loteSeleccionado.id} - ${loteSeleccionado.archivo_txt}`,
             observaciones: detalle.tipo === 'cancela' ? 'Cancela factura' : 'Pago a cuenta'
           })
 
