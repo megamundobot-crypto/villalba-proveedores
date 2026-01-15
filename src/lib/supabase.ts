@@ -93,3 +93,27 @@ export interface CuentaInterna {
   facturas_imputadas?: number[]
   created_at: string
 }
+
+// Función para registrar auditoría
+export async function registrarAuditoria(
+  accion: string,
+  descripcion: string,
+  detalles?: Record<string, any>
+) {
+  try {
+    // Obtener usuario actual del localStorage
+    const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null
+    const user = userStr ? JSON.parse(userStr) : null
+
+    await supabase.from('auditoria').insert({
+      accion,
+      descripcion,
+      detalles: detalles ? JSON.stringify(detalles) : null,
+      usuario_id: user?.id || null,
+      usuario_nombre: user?.nombre || 'Sistema',
+      ip: null // No podemos obtener IP del cliente fácilmente
+    })
+  } catch (error) {
+    console.error('Error registrando auditoría:', error)
+  }
+}

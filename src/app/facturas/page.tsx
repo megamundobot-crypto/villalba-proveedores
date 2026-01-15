@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase, Factura, Proveedor } from '@/lib/supabase'
+import { supabase, Factura, Proveedor, registrarAuditoria } from '@/lib/supabase'
 import Link from 'next/link'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import UserMenu from '@/components/UserMenu'
@@ -300,10 +300,22 @@ export default function FacturasPage() {
       observaciones: formData.observaciones || null
     }
 
+    const proveedorNombre = proveedores.find(p => p.id === parseInt(formData.proveedor_id))?.nombre || 'Desconocido'
+
     if (editingFactura) {
       await supabase.from('facturas').update(dataToSave).eq('id', editingFactura.id)
+      await registrarAuditoria(
+        'EDITAR_FACTURA',
+        `Factura ${formData.numero} de ${proveedorNombre} modificada`,
+        { factura_id: editingFactura.id, numero: formData.numero, proveedor: proveedorNombre, empresa: formData.empresa, monto: formData.monto_total }
+      )
     } else {
-      await supabase.from('facturas').insert([dataToSave])
+      const { data: nuevaFactura } = await supabase.from('facturas').insert([dataToSave]).select().single()
+      await registrarAuditoria(
+        'CREAR_FACTURA',
+        `Nueva factura ${formData.numero} de ${proveedorNombre} por $${parseFloat(formData.monto_total).toLocaleString('es-AR')}`,
+        { factura_id: nuevaFactura?.id, numero: formData.numero, proveedor: proveedorNombre, empresa: formData.empresa, monto: formData.monto_total }
+      )
     }
 
     setShowModal(false)
@@ -311,8 +323,14 @@ export default function FacturasPage() {
   }
 
   async function handleDelete(id: number) {
+    const factura = facturas.find(f => f.id === id)
     if (confirm('¿Seguro que querés anular esta factura?')) {
       await supabase.from('facturas').update({ estado: 'anulada' }).eq('id', id)
+      await registrarAuditoria(
+        'ANULAR_FACTURA',
+        `Factura ${factura?.numero} de ${factura?.proveedor_nombre} anulada`,
+        { factura_id: id, numero: factura?.numero, proveedor: factura?.proveedor_nombre, empresa: factura?.empresa }
+      )
       loadData()
     }
   }

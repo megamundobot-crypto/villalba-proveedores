@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, Suspense } from 'react'
-import { supabase, Factura } from '@/lib/supabase'
+import { supabase, Factura, registrarAuditoria } from '@/lib/supabase'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import ProtectedRoute from '@/components/ProtectedRoute'
@@ -379,6 +379,24 @@ function PagosContent() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+
+    // 4. Registrar auditoría
+    await registrarAuditoria(
+      'GENERAR_LOTE_TXT',
+      `Lote #${lote.id} generado - ${pagosSeleccionados.length} pagos por ${formatMoney(totalGeneral)} (${cuenta})`,
+      {
+        lote_id: lote.id,
+        empresa: cuenta,
+        total: totalGeneral,
+        cantidad_pagos: pagosSeleccionados.length,
+        archivo_txt: nombreArchivo,
+        proveedores: pagosSeleccionados.map(p => ({
+          nombre: p.factura.proveedor_nombre,
+          factura: p.factura.numero,
+          monto: p.monto
+        }))
+      }
+    )
 
     setGeneratingTxt(false)
     setShowConfirmModal(false)

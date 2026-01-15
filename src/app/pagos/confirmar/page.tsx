@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, registrarAuditoria } from '@/lib/supabase'
 import Link from 'next/link'
 import NavRapida from '@/components/NavRapida'
 
@@ -202,6 +202,20 @@ export default function ConfirmarPagosPage() {
         })
         .eq('id', loteSeleccionado.id)
 
+      // 3. Registrar auditoría
+      await registrarAuditoria(
+        'CONFIRMAR_LOTE_PAGO',
+        `Lote #${loteSeleccionado.id} confirmado - ${detalles.length} pagos por ${formatMoney(loteSeleccionado.total)}`,
+        {
+          lote_id: loteSeleccionado.id,
+          empresa: loteSeleccionado.empresa,
+          total: loteSeleccionado.total,
+          cantidad_pagos: detalles.length,
+          proveedores: detalles.map(d => d.proveedor_nombre),
+          archivo_txt: loteSeleccionado.archivo_txt
+        }
+      )
+
       setMensaje({
         tipo: 'success',
         texto: `✅ Lote confirmado exitosamente. Se registraron ${detalles.length} pagos.`
@@ -232,6 +246,18 @@ export default function ConfirmarPagosPage() {
       .from('lotes_pago')
       .update({ estado: 'anulado' })
       .eq('id', loteSeleccionado.id)
+
+    // Registrar auditoría
+    await registrarAuditoria(
+      'ANULAR_LOTE_PAGO',
+      `Lote #${loteSeleccionado.id} anulado - ${loteSeleccionado.cantidad_pagos} pagos por ${formatMoney(loteSeleccionado.total)}`,
+      {
+        lote_id: loteSeleccionado.id,
+        empresa: loteSeleccionado.empresa,
+        total: loteSeleccionado.total,
+        archivo_txt: loteSeleccionado.archivo_txt
+      }
+    )
 
     setMensaje({ tipo: 'success', texto: 'Lote anulado correctamente.' })
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase, Proveedor, CBUProveedor } from '@/lib/supabase'
+import { supabase, Proveedor, CBUProveedor, registrarAuditoria } from '@/lib/supabase'
 import Link from 'next/link'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import UserMenu from '@/components/UserMenu'
@@ -147,16 +147,32 @@ export default function ProveedoresPage() {
     e.preventDefault()
     if (editingProveedor) {
       await supabase.from('proveedores').update(formData).eq('id', editingProveedor.id)
+      await registrarAuditoria(
+        'EDITAR_PROVEEDOR',
+        `Proveedor ${formData.nombre} modificado`,
+        { proveedor_id: editingProveedor.id, nombre: formData.nombre, cuit: formData.cuit }
+      )
     } else {
-      await supabase.from('proveedores').insert([formData])
+      const { data: nuevoProveedor } = await supabase.from('proveedores').insert([formData]).select().single()
+      await registrarAuditoria(
+        'CREAR_PROVEEDOR',
+        `Nuevo proveedor: ${formData.nombre}`,
+        { proveedor_id: nuevoProveedor?.id, nombre: formData.nombre, cuit: formData.cuit }
+      )
     }
     setShowModal(false)
     loadProveedores()
   }
 
   async function handleDelete(id: number) {
+    const prov = proveedores.find(p => p.id === id)
     if (confirm('¿Seguro que querés eliminar este proveedor?')) {
       await supabase.from('proveedores').update({ activo: false }).eq('id', id)
+      await registrarAuditoria(
+        'ELIMINAR_PROVEEDOR',
+        `Proveedor ${prov?.nombre} eliminado (desactivado)`,
+        { proveedor_id: id, nombre: prov?.nombre }
+      )
       loadProveedores()
     }
   }
@@ -168,6 +184,11 @@ export default function ProveedoresPage() {
       proveedor_id: selectedProveedor.id,
       ...cbuFormData
     }])
+    await registrarAuditoria(
+      'AGREGAR_CBU',
+      `CBU agregado a ${selectedProveedor.nombre}: ${cbuFormData.cbu}`,
+      { proveedor_id: selectedProveedor.id, proveedor: selectedProveedor.nombre, cbu: cbuFormData.cbu, banco: cbuFormData.banco }
+    )
     setCbuFormData({ cbu: '', banco: '', titular: '', principal: false })
     loadCBUs(selectedProveedor.id)
   }
