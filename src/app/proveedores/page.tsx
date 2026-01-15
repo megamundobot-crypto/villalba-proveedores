@@ -290,6 +290,15 @@ export default function ProveedoresPage() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex justify-center gap-1">
+                          <Link
+                            href={`/proveedores/cuenta/${prov.id}`}
+                            className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                            title="Ver cuenta corriente"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                            </svg>
+                          </Link>
                           <button
                             onClick={() => openCBUModal(prov)}
                             className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
