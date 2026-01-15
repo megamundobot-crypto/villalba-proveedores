@@ -221,7 +221,7 @@ export default function HistorialPagosPage() {
               >
                 <option value="todas">Todas</option>
                 <option value="VH">VH - Villalba Hnos</option>
-                <option value="VC">VC - Villalba Corral</option>
+                <option value="VC">VC - Villalba Cristino</option>
               </select>
             </div>
             <div>
@@ -421,7 +421,7 @@ export default function HistorialPagosPage() {
                   <p className="font-semibold">ℹ️ Información para control gerencial</p>
                   <p className="mt-1">
                     Este listado puede usarse para cotejar con el resumen bancario de la cuenta
-                    {loteSeleccionado.empresa === 'VH' ? ' de Villalba Hnos' : ' de Villalba Corral'}.
+                    {loteSeleccionado.empresa === 'VH' ? ' de Villalba Hnos' : ' de Villalba Cristino'}.
                   </p>
                   <p className="mt-1">
                     Verificá que cada transferencia figure en el home banking con el monto y destinatario correctos.
