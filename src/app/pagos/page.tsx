@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import UserMenu from '@/components/UserMenu'
+import NavRapida from '@/components/NavRapida'
 import { BancoIcon } from '@/components/BancoLogo'
 import { getBancoFromCBU } from '@/lib/bancos-argentina'
 
@@ -472,6 +473,7 @@ function PagosContent() {
             </div>
           </div>
         </header>
+        <NavRapida />
 
         <main className="container-app py-6">
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

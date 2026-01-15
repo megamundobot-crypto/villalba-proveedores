@@ -5,6 +5,7 @@ import { supabase, Factura, Proveedor } from '@/lib/supabase'
 import Link from 'next/link'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import UserMenu from '@/components/UserMenu'
+import NavRapida from '@/components/NavRapida'
 
 // Icons inline
 const Icons = {
@@ -371,6 +372,7 @@ export default function FacturasPage() {
             </div>
           </div>
         </header>
+        <NavRapida />
 
         <main className="container-app py-8">
           {/* Panel de filtros */}

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft, ArrowRightLeft, Building2, FileText, Download, Check, Calendar, DollarSign, Receipt, History, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import Link from 'next/link'
+import NavRapida from '@/components/NavRapida'
 
 interface CuentaInternaRow {
   id: number
@@ -294,6 +295,7 @@ export default function CuentaInternaPage() {
           </div>
         </div>
       </header>
+      <NavRapida />
 
       <main className="container mx-auto px-6 py-6">
         {/* Cards de resumen - Cuenta Interna Histórica */}

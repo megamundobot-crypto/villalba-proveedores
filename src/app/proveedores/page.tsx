@@ -6,6 +6,7 @@ import Link from 'next/link'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import UserMenu from '@/components/UserMenu'
 import BancoLogo, { BancoBadge } from '@/components/BancoLogo'
+import NavRapida from '@/components/NavRapida'
 import { getBancoFromCBU } from '@/lib/bancos-argentina'
 
 // Icons inline
@@ -214,6 +215,7 @@ export default function ProveedoresPage() {
             </div>
           </div>
         </header>
+        <NavRapida />
 
         <main className="container-app py-8">
           {/* Stats */}

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import UserMenu from '@/components/UserMenu'
+import NavRapida from '@/components/NavRapida'
 
 interface Proveedor {
   id: number
@@ -200,6 +201,7 @@ export default function CuentaProveedorPage({ params }: { params: Promise<{ id: 
             <UserMenu />
           </div>
         </header>
+        <NavRapida />
 
         <div className="max-w-6xl mx-auto p-4">
           {/* Info Proveedor */}
