@@ -31,6 +31,8 @@ interface DetallePago {
   confirmado: boolean
   fecha_confirmacion: string | null
   observaciones: string | null
+  whatsapp?: string
+  notificado?: boolean
 }
 
 export default function HistorialPagosPage() {
@@ -117,8 +119,42 @@ export default function HistorialPagosPage() {
       .order('proveedor_nombre')
 
     if (data) {
-      setDetalles(data)
+      // Cargar WhatsApp de cada proveedor
+      const proveedorIds = [...new Set(data.map(d => d.proveedor_id))]
+      const { data: proveedores } = await supabase
+        .from('proveedores')
+        .select('id, whatsapp')
+        .in('id', proveedorIds)
+
+      const whatsappMap = new Map(proveedores?.map(p => [p.id, p.whatsapp]) || [])
+
+      setDetalles(data.map(d => ({
+        ...d,
+        whatsapp: whatsappMap.get(d.proveedor_id)
+      })))
     }
+  }
+
+  const enviarWhatsApp = (detalle: DetallePago) => {
+    if (!detalle.whatsapp) {
+      alert('Este proveedor no tiene WhatsApp configurado. Editalo en la sección Proveedores.')
+      return
+    }
+
+    const empresa = loteSeleccionado?.empresa === 'VH' ? 'Villalba Hermanos SRL' : 'Villalba Cristino'
+    const tipoTexto = detalle.tipo === 'cancela' ? 'cancela' : 'a cuenta'
+
+    const mensaje = `Hola! Te informamos que se realizó una transferencia por *${formatMoney(detalle.monto)}* correspondiente a la factura *${detalle.factura_numero}* (${tipoTexto}) desde *${empresa}*. Te adjuntamos el comprobante.`
+
+    // Formato para abrir app de WhatsApp (no web)
+    const url = `whatsapp://send?phone=${detalle.whatsapp}&text=${encodeURIComponent(mensaje)}`
+
+    window.location.href = url
+
+    // Marcar como notificado localmente
+    setDetalles(prev => prev.map(d =>
+      d.id === detalle.id ? { ...d, notificado: true } : d
+    ))
   }
 
   const getEstadoBadge = (estado: string) => {
@@ -372,10 +408,13 @@ export default function HistorialPagosPage() {
                       <tr className="bg-gray-50">
                         <th className="px-3 py-2 text-left">Proveedor</th>
                         <th className="px-3 py-2 text-left">Factura</th>
-                        <th className="px-3 py-2 text-left">CBU</th>
-                        <th className="px-3 py-2 text-left">Banco</th>
+                        <th className="px-3 py-2 text-left hidden md:table-cell">CBU</th>
+                        <th className="px-3 py-2 text-left hidden md:table-cell">Banco</th>
                         <th className="px-3 py-2 text-right">Monto</th>
                         <th className="px-3 py-2 text-center">Tipo</th>
+                        {loteSeleccionado?.estado === 'confirmado' && (
+                          <th className="px-3 py-2 text-center">Notificar</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -388,10 +427,10 @@ export default function HistorialPagosPage() {
                         >
                           <td className="px-3 py-3 font-medium">{detalle.proveedor_nombre}</td>
                           <td className="px-3 py-3 text-gray-600">{detalle.factura_numero}</td>
-                          <td className="px-3 py-3 text-gray-600 font-mono text-xs">
+                          <td className="px-3 py-3 text-gray-600 font-mono text-xs hidden md:table-cell">
                             {detalle.cbu ? `${detalle.cbu.slice(0, 8)}...${detalle.cbu.slice(-4)}` : '-'}
                           </td>
-                          <td className="px-3 py-3 text-gray-600">{detalle.banco || '-'}</td>
+                          <td className="px-3 py-3 text-gray-600 hidden md:table-cell">{detalle.banco || '-'}</td>
                           <td className="px-3 py-3 text-right font-mono font-semibold">
                             {formatMoney(detalle.monto)}
                           </td>
@@ -404,16 +443,35 @@ export default function HistorialPagosPage() {
                               {detalle.tipo === 'cancela' ? 'Cancela' : 'A cuenta'}
                             </span>
                           </td>
+                          {loteSeleccionado?.estado === 'confirmado' && (
+                            <td className="px-3 py-3 text-center">
+                              <button
+                                onClick={() => enviarWhatsApp(detalle)}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                                  detalle.notificado
+                                    ? 'bg-gray-200 text-gray-500'
+                                    : detalle.whatsapp
+                                      ? 'bg-green-500 hover:bg-green-600 text-white'
+                                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                }`}
+                                title={detalle.whatsapp ? `Enviar a ${detalle.whatsapp}` : 'Sin WhatsApp configurado'}
+                              >
+                                {detalle.notificado ? '✓ Enviado' : '📲 WhatsApp'}
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="bg-gray-100 font-semibold">
-                        <td colSpan={4} className="px-3 py-2 text-right">Total:</td>
+                        <td colSpan={4} className="px-3 py-2 text-right hidden md:table-cell">Total:</td>
+                        <td colSpan={2} className="px-3 py-2 text-right md:hidden">Total:</td>
                         <td className="px-3 py-2 text-right font-mono">
                           {formatMoney(detalles.reduce((sum, d) => sum + d.monto, 0))}
                         </td>
-                        <td></td>
+                        <td className="hidden md:table-cell"></td>
+                        {loteSeleccionado?.estado === 'confirmado' && <td></td>}
                       </tr>
                     </tfoot>
                   </table>

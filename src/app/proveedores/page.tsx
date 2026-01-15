@@ -58,9 +58,14 @@ const Icons = {
   ),
 }
 
+interface ProveedorConCBU extends Proveedor {
+  cbu_principal?: string
+  banco_principal?: string
+}
+
 export default function ProveedoresPage() {
-  const [proveedores, setProveedores] = useState<Proveedor[]>([])
-  const [proveedoresFiltrados, setProveedoresFiltrados] = useState<Proveedor[]>([])
+  const [proveedores, setProveedores] = useState<ProveedorConCBU[]>([])
+  const [proveedoresFiltrados, setProveedoresFiltrados] = useState<ProveedorConCBU[]>([])
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -73,6 +78,7 @@ export default function ProveedoresPage() {
     cuit: '',
     email: '',
     telefono: '',
+    whatsapp: '',
     notas: ''
   })
   const [cbuFormData, setCbuFormData] = useState({
@@ -105,7 +111,24 @@ export default function ProveedoresPage() {
       .eq('activo', true)
       .order('nombre')
 
-    if (data) setProveedores(data)
+    if (data) {
+      // Cargar CBU principal de cada proveedor
+      const { data: cbusPrincipales } = await supabase
+        .from('cbus_proveedores')
+        .select('proveedor_id, cbu, banco')
+        .eq('principal', true)
+        .eq('activo', true)
+
+      const cbuMap = new Map(cbusPrincipales?.map(c => [c.proveedor_id, c]) || [])
+
+      const proveedoresConCBU = data.map(p => ({
+        ...p,
+        cbu_principal: cbuMap.get(p.id)?.cbu,
+        banco_principal: cbuMap.get(p.id)?.banco || (cbuMap.get(p.id)?.cbu ? getBancoFromCBU(cbuMap.get(p.id)!.cbu) : undefined)
+      }))
+
+      setProveedores(proveedoresConCBU)
+    }
     setLoading(false)
   }
 
@@ -121,7 +144,7 @@ export default function ProveedoresPage() {
 
   function openNewModal() {
     setEditingProveedor(null)
-    setFormData({ nombre: '', cuit: '', email: '', telefono: '', notas: '' })
+    setFormData({ nombre: '', cuit: '', email: '', telefono: '', whatsapp: '', notas: '' })
     setShowModal(true)
   }
 
@@ -132,6 +155,7 @@ export default function ProveedoresPage() {
       cuit: proveedor.cuit || '',
       email: proveedor.email || '',
       telefono: proveedor.telefono || '',
+      whatsapp: (proveedor as any).whatsapp || '',
       notas: proveedor.notas || ''
     })
     setShowModal(true)
@@ -286,8 +310,8 @@ export default function ProveedoresPage() {
                   <tr className="bg-slate-100 border-b-2 border-slate-200">
                     <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Nombre</th>
                     <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden md:table-cell">CUIT</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden lg:table-cell">Email</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden lg:table-cell">Teléfono</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden lg:table-cell">CBU Principal</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden xl:table-cell">WhatsApp</th>
                     <th className="px-6 py-4 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Acciones</th>
                   </tr>
                 </thead>
@@ -306,10 +330,23 @@ export default function ProveedoresPage() {
                         <span className="font-mono text-sm text-slate-600">{prov.cuit || '—'}</span>
                       </td>
                       <td className="px-6 py-4 hidden lg:table-cell">
-                        <span className="text-sm text-slate-600">{prov.email || '—'}</span>
+                        {prov.cbu_principal ? (
+                          <div className="flex items-center gap-2">
+                            <BancoBadge cbu={prov.cbu_principal} size="sm" />
+                            <span className="font-mono text-xs text-slate-500">
+                              ...{prov.cbu_principal.slice(-8)}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-sm">Sin CBU</span>
+                        )}
                       </td>
-                      <td className="px-6 py-4 hidden lg:table-cell">
-                        <span className="text-sm text-slate-600">{prov.telefono || '—'}</span>
+                      <td className="px-6 py-4 hidden xl:table-cell">
+                        {(prov as any).whatsapp ? (
+                          <span className="text-sm text-green-600 font-medium">📱 {(prov as any).whatsapp}</span>
+                        ) : (
+                          <span className="text-slate-400 text-sm">—</span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex justify-center gap-1">
@@ -403,14 +440,27 @@ export default function ProveedoresPage() {
                     className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Teléfono</label>
-                  <input
-                    type="text"
-                    value={formData.telefono}
-                    onChange={e => setFormData({...formData, telefono: e.target.value})}
-                    className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Teléfono</label>
+                    <input
+                      type="text"
+                      value={formData.telefono}
+                      onChange={e => setFormData({...formData, telefono: e.target.value})}
+                      className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">📱 WhatsApp</label>
+                    <input
+                      type="text"
+                      value={formData.whatsapp}
+                      onChange={e => setFormData({...formData, whatsapp: e.target.value})}
+                      className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
+                      placeholder="5491112345678"
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Sin + ni espacios. Ej: 5491112345678</p>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1.5">Notas</label>

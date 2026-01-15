@@ -12,6 +12,7 @@ export interface Proveedor {
   cuit?: string
   email?: string
   telefono?: string
+  whatsapp?: string
   notas?: string
   activo: boolean
   created_at: string
