@@ -156,10 +156,18 @@ Te adjuntamos el comprobante 📎
 
 ¡Saludos! 🙌`
 
-    // Usar api.whatsapp.com abre directamente el chat del contacto en la app
-    const url = `https://api.whatsapp.com/send?phone=${detalle.whatsapp}&text=${encodeURIComponent(mensaje)}`
+    // Copiar mensaje al portapapeles
+    navigator.clipboard.writeText(mensaje)
 
-    window.open(url, '_blank')
+    // Abrir WhatsApp con el número (el mensaje ya está copiado para pegar)
+    const url = `whatsapp://send/?phone=${detalle.whatsapp}`
+
+    window.location.href = url
+
+    // Mostrar aviso de que el mensaje está copiado
+    setTimeout(() => {
+      alert('📋 El mensaje está copiado en el portapapeles.\n\n👉 Pegalo en el chat con Ctrl+V o Cmd+V')
+    }, 500)
 
     // Marcar como notificado localmente
     setDetalles(prev => prev.map(d =>
