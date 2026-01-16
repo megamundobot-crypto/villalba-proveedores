@@ -237,14 +237,10 @@ export default function CuentaInternaPage() {
       })
     }
 
-    // Separar facturas pagadas internamente para el historial
-    const pagadasVHaVC = vhAvc.filter(d => d.pagado)
-    const pagadasVCaVH = vcAvh.filter(d => d.pagado)
-    setFcPagadasInternamente([...pagadasVHaVC, ...pagadasVCaVH])
-
-    // Filtrar solo las pendientes para mostrar en las tabs de deuda
-    setDeudaVHaVC(vhAvc.filter(d => !d.pagado))
-    setDeudaVCaVH(vcAvh.filter(d => !d.pagado))
+    // Mostrar TODAS las facturas en las tabs de deuda (no filtrar por pagado)
+    // El campo "pagado" solo se usa cuando se salda mediante pago interno
+    setDeudaVHaVC(vhAvc)
+    setDeudaVCaVH(vcAvh)
     setTotalesCuentaInterna({
       totalVHaVC,
       pagadoVHaVC,
@@ -262,6 +258,20 @@ export default function CuentaInternaPage() {
 
     if (pagosInternosData) {
       setPagosInternos(pagosInternosData)
+    }
+
+    // Cargar facturas que fueron saldadas mediante pagos internos
+    const { data: detallesPagos } = await supabase
+      .from('pagos_internos_detalle')
+      .select('cuenta_interna_id')
+
+    if (detallesPagos && detallesPagos.length > 0) {
+      const idsFacturasPagadas = detallesPagos.map(d => d.cuenta_interna_id)
+      const todasLasDeudas = [...vhAvc, ...vcAvh]
+      const fcSaldadas = todasLasDeudas.filter(d => idsFacturasPagadas.includes(d.id))
+      setFcPagadasInternamente(fcSaldadas)
+    } else {
+      setFcPagadasInternamente([])
     }
 
     setLoading(false)
