@@ -98,6 +98,19 @@ export default function CuentaInternaPage() {
   const [pagosInternos, setPagosInternos] = useState<PagoInterno[]>([])
   const [fcPagadasInternamente, setFcPagadasInternamente] = useState<DeudaHistorica[]>([])
 
+  // Modal para agregar documento (FC o NC)
+  const [showModalDocumento, setShowModalDocumento] = useState(false)
+  const [documentoForm, setDocumentoForm] = useState({
+    tipoDocumento: 'FC' as 'FC' | 'NC',
+    deudor: 'VH' as 'VH' | 'VC',  // Quién debe: si VH debe a VC, o VC debe a VH
+    fecha: new Date().toISOString().split('T')[0],
+    nroDocumento: '',
+    proveedor: '',
+    monto: 0,
+    pagadoProveedor: false
+  })
+  const [guardandoDocumento, setGuardandoDocumento] = useState(false)
+
   useEffect(() => {
     loadData()
   }, [])
@@ -183,22 +196,28 @@ export default function CuentaInternaPage() {
 
     const vhAvc: DeudaHistorica[] = []
     const vcAvh: DeudaHistorica[] = []
-    let totalVHaVC = 0, pagadoVHaVC = 0
-    let totalVCaVH = 0, pagadoVCaVH = 0
+    let totalVHaVC = 0
+    let totalVCaVH = 0
 
     if (cuentaData) {
       cuentaData.forEach((row: CuentaInternaRow) => {
-        // Extraer proveedor y nro factura de observaciones "FC 123 - PROVEEDOR"
+        // Extraer proveedor y nro de observaciones "FC 123 - PROVEEDOR" o "NC 123 - PROVEEDOR"
         const obs = row.observaciones || ''
-        const match = obs.match(/FC\s*(\S+)\s*-\s*(.+)/)
-        const nroFactura = match ? match[1] : ''
-        const proveedor = match ? match[2].trim() : obs
+        const match = obs.match(/(FC|NC)\s*(\S+)\s*-\s*(.+)/)
+        // nroFactura incluye el tipo de documento (FC o NC) para distinguirlos en la UI
+        const nroFactura = match ? `${match[1]} ${match[2]}` : ''
+        const proveedor = match ? match[3].trim() : obs
 
         const montoTotal = Number(row.monto) || 0
         const neto = montoTotal / 1.21
 
         if (row.pagador === 'VH') {
           // VH debe a VC (65% de facturas de VC)
+          // El campo "pagado" del Excel indica si se pagó al proveedor externo
+          // Usamos pagado_proveedor si existe, sino usamos pagado del Excel
+          const pagadoAlProveedor = (row as any).pagado_proveedor !== undefined
+            ? (row as any).pagado_proveedor
+            : row.pagado
           const item: DeudaHistorica = {
             id: row.id,
             fecha: row.fecha || '',
@@ -209,14 +228,17 @@ export default function CuentaInternaPage() {
             porcentaje: 65,
             montoDeuda: montoTotal,
             pagado: row.pagado,
-            pagado_proveedor: (row as any).pagado_proveedor || false,
+            pagado_proveedor: pagadoAlProveedor,
             factura_id: (row as any).factura_id
           }
           vhAvc.push(item)
           totalVHaVC += montoTotal
-          if (row.pagado) pagadoVHaVC += montoTotal
         } else {
           // VC debe a VH (35% de facturas de VH)
+          // El campo "pagado" del Excel indica si se pagó al proveedor externo
+          const pagadoAlProveedor = (row as any).pagado_proveedor !== undefined
+            ? (row as any).pagado_proveedor
+            : row.pagado
           const item: DeudaHistorica = {
             id: row.id,
             fecha: row.fecha || '',
@@ -227,12 +249,11 @@ export default function CuentaInternaPage() {
             porcentaje: 35,
             montoDeuda: montoTotal,
             pagado: row.pagado,
-            pagado_proveedor: (row as any).pagado_proveedor || false,
+            pagado_proveedor: pagadoAlProveedor,
             factura_id: (row as any).factura_id
           }
           vcAvh.push(item)
           totalVCaVH += montoTotal
-          if (row.pagado) pagadoVCaVH += montoTotal
         }
       })
     }
@@ -241,14 +262,6 @@ export default function CuentaInternaPage() {
     // El campo "pagado" indica si se pagó al proveedor, NO si se saldó la deuda interna
     setDeudaVHaVC(vhAvc)
     setDeudaVCaVH(vcAvh)
-    setTotalesCuentaInterna({
-      totalVHaVC,
-      pagadoVHaVC,
-      pendienteVHaVC: totalVHaVC - pagadoVHaVC,
-      totalVCaVH,
-      pagadoVCaVH,
-      pendienteVCaVH: totalVCaVH - pagadoVCaVH
-    })
 
     // Cargar historial de pagos internos
     const { data: pagosInternosData } = await supabase
@@ -261,18 +274,43 @@ export default function CuentaInternaPage() {
     }
 
     // Cargar facturas que fueron saldadas mediante pagos internos
+    // y calcular montos saldados por cada dirección (VH->VC y VC->VH)
     const { data: detallesPagos } = await supabase
       .from('pagos_internos_detalle')
-      .select('cuenta_interna_id')
+      .select('cuenta_interna_id, monto_aplicado')
+
+    let pagadoVHaVC = 0
+    let pagadoVCaVH = 0
+    const idsFacturasSaldadas: number[] = []
 
     if (detallesPagos && detallesPagos.length > 0) {
-      const idsFacturasSaldadas = detallesPagos.map(d => d.cuenta_interna_id)
+      detallesPagos.forEach(d => {
+        idsFacturasSaldadas.push(d.cuenta_interna_id)
+        // Buscar si es deuda VH->VC o VC->VH
+        const esVHaVC = vhAvc.some(item => item.id === d.cuenta_interna_id)
+        if (esVHaVC) {
+          pagadoVHaVC += Number(d.monto_aplicado) || 0
+        } else {
+          pagadoVCaVH += Number(d.monto_aplicado) || 0
+        }
+      })
+
       const todasLasDeudas = [...vhAvc, ...vcAvh]
       const fcSaldadas = todasLasDeudas.filter(d => idsFacturasSaldadas.includes(d.id))
       setFcPagadasInternamente(fcSaldadas)
     } else {
       setFcPagadasInternamente([])
     }
+
+    // Ahora sí setear los totales con los montos correctos
+    setTotalesCuentaInterna({
+      totalVHaVC,
+      pagadoVHaVC,
+      pendienteVHaVC: totalVHaVC - pagadoVHaVC,
+      totalVCaVH,
+      pagadoVCaVH,
+      pendienteVCaVH: totalVCaVH - pagadoVCaVH
+    })
 
     setLoading(false)
   }
@@ -382,6 +420,75 @@ export default function CuentaInternaPage() {
     if (!error) {
       loadData()
     }
+  }
+
+  // Función para agregar FC o NC a la cuenta interna
+  async function guardarDocumento() {
+    if (!documentoForm.nroDocumento || !documentoForm.proveedor || documentoForm.monto <= 0) {
+      alert('Completá todos los campos: N° documento, proveedor y monto')
+      return
+    }
+
+    setGuardandoDocumento(true)
+
+    try {
+      // Determinar pagador y receptor según quién debe
+      // Si VH debe a VC: pagador=VH, receptor=VC (65% de facturas de VC)
+      // Si VC debe a VH: pagador=VC, receptor=VH (35% de facturas de VH)
+      const pagador = documentoForm.deudor
+      const receptor = documentoForm.deudor === 'VH' ? 'VC' : 'VH'
+      const porcentaje = documentoForm.deudor === 'VH' ? 0.65 : 0.35
+
+      // Calcular el monto de deuda según el porcentaje
+      // El monto ingresado es el total de la factura con IVA
+      const montoNeto = documentoForm.monto / 1.21
+      const montoDeuda = montoNeto * porcentaje
+
+      // Para NC: el monto será negativo (resta)
+      const montoFinal = documentoForm.tipoDocumento === 'NC' ? -montoDeuda : montoDeuda
+
+      const tipoDoc = documentoForm.tipoDocumento === 'FC' ? 'FC' : 'NC'
+      const observaciones = `${tipoDoc} ${documentoForm.nroDocumento} - ${documentoForm.proveedor.toUpperCase()}`
+
+      const { error } = await supabase
+        .from('cuenta_interna')
+        .insert({
+          tipo: 'deuda_historica',
+          debe_vh: documentoForm.deudor === 'VH' ? montoFinal : 0,
+          debe_vc: documentoForm.deudor === 'VC' ? montoFinal : 0,
+          pagador,
+          receptor,
+          monto: montoFinal,
+          fecha: documentoForm.fecha,
+          observaciones,
+          pagado: false,
+          pagado_proveedor: documentoForm.pagadoProveedor
+        })
+
+      if (error) throw error
+
+      const tipoTexto = documentoForm.tipoDocumento === 'FC' ? 'Factura' : 'Nota de Crédito'
+      const accion = documentoForm.tipoDocumento === 'NC' ? 'restando de' : 'sumando a'
+      alert(`✅ ${tipoTexto} registrada exitosamente\n\n${accion} la deuda de ${pagador} a ${receptor}\nMonto deuda: $${Math.abs(montoFinal).toLocaleString('es-AR')}`)
+
+      // Resetear y recargar
+      setShowModalDocumento(false)
+      setDocumentoForm({
+        tipoDocumento: 'FC',
+        deudor: 'VH',
+        fecha: new Date().toISOString().split('T')[0],
+        nroDocumento: '',
+        proveedor: '',
+        monto: 0,
+        pagadoProveedor: false
+      })
+      loadData()
+    } catch (error) {
+      console.error('Error guardando documento:', error)
+      alert('Error al guardar el documento. Verificá la consola.')
+    }
+
+    setGuardandoDocumento(false)
   }
 
   function handleSort(field: SortField) {
@@ -515,13 +622,22 @@ export default function CuentaInternaPage() {
                 </span>
               )}
             </p>
-            <button
-              onClick={() => setShowModalPago(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
-            >
-              <DollarSign className="h-4 w-4" />
-              Registrar Pago Interno
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowModalDocumento(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+              >
+                <FileText className="h-4 w-4" />
+                Agregar FC / NC
+              </button>
+              <button
+                onClick={() => setShowModalPago(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
+              >
+                <DollarSign className="h-4 w-4" />
+                Registrar Pago Interno
+              </button>
+            </div>
           </div>
         </div>
 
@@ -664,20 +780,26 @@ export default function CuentaInternaPage() {
                       <tr className="bg-blue-50">
                         <th className="px-3 py-2 text-left font-semibold text-slate-600">Fecha</th>
                         <th className="px-3 py-2 text-left font-semibold text-slate-600">Proveedor</th>
-                        <th className="px-3 py-2 text-left font-semibold text-slate-600">N° FC</th>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-600">Documento</th>
                         <th className="px-3 py-2 text-right font-semibold text-slate-600">%</th>
-                        <th className="px-3 py-2 text-right font-semibold text-blue-700">Monto Deuda</th>
+                        <th className="px-3 py-2 text-right font-semibold text-blue-700">Monto</th>
                         <th className="px-3 py-2 text-center font-semibold text-slate-600">Pagado Prov</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {deudaVHaVC.map((d) => (
-                        <tr key={d.id} className="hover:bg-slate-50">
+                        <tr key={d.id} className={`hover:bg-slate-50 ${d.montoDeuda < 0 ? 'bg-red-50' : ''}`}>
                           <td className="px-3 py-2 text-slate-600">{formatDate(d.fecha)}</td>
                           <td className="px-3 py-2 font-medium text-slate-800">{d.proveedor}</td>
-                          <td className="px-3 py-2 text-slate-600">{d.nroFactura}</td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {d.nroFactura.startsWith('NC') ? (
+                              <span className="text-red-600 font-medium">{d.nroFactura}</span>
+                            ) : d.nroFactura}
+                          </td>
                           <td className="px-3 py-2 text-right text-slate-600">{d.porcentaje}%</td>
-                          <td className="px-3 py-2 text-right font-semibold text-blue-700">{formatMoney(d.montoDeuda)}</td>
+                          <td className={`px-3 py-2 text-right font-semibold ${d.montoDeuda < 0 ? 'text-red-600' : 'text-blue-700'}`}>
+                            {formatMoney(d.montoDeuda)}
+                          </td>
                           <td className="px-3 py-2 text-center">
                             <button
                               onClick={() => togglePagadoProveedor(d.id, d.pagado_proveedor)}
@@ -720,20 +842,26 @@ export default function CuentaInternaPage() {
                       <tr className="bg-emerald-50">
                         <th className="px-3 py-2 text-left font-semibold text-slate-600">Fecha</th>
                         <th className="px-3 py-2 text-left font-semibold text-slate-600">Proveedor</th>
-                        <th className="px-3 py-2 text-left font-semibold text-slate-600">N° FC</th>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-600">Documento</th>
                         <th className="px-3 py-2 text-right font-semibold text-slate-600">%</th>
-                        <th className="px-3 py-2 text-right font-semibold text-emerald-700">Monto Deuda</th>
+                        <th className="px-3 py-2 text-right font-semibold text-emerald-700">Monto</th>
                         <th className="px-3 py-2 text-center font-semibold text-slate-600">Pagado Prov</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {deudaVCaVH.map((d) => (
-                        <tr key={d.id} className="hover:bg-slate-50">
+                        <tr key={d.id} className={`hover:bg-slate-50 ${d.montoDeuda < 0 ? 'bg-red-50' : ''}`}>
                           <td className="px-3 py-2 text-slate-600">{formatDate(d.fecha)}</td>
                           <td className="px-3 py-2 font-medium text-slate-800">{d.proveedor}</td>
-                          <td className="px-3 py-2 text-slate-600">{d.nroFactura}</td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {d.nroFactura.startsWith('NC') ? (
+                              <span className="text-red-600 font-medium">{d.nroFactura}</span>
+                            ) : d.nroFactura}
+                          </td>
                           <td className="px-3 py-2 text-right text-slate-600">{d.porcentaje}%</td>
-                          <td className="px-3 py-2 text-right font-semibold text-emerald-700">{formatMoney(d.montoDeuda)}</td>
+                          <td className={`px-3 py-2 text-right font-semibold ${d.montoDeuda < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                            {formatMoney(d.montoDeuda)}
+                          </td>
                           <td className="px-3 py-2 text-center">
                             <button
                               onClick={() => togglePagadoProveedor(d.id, d.pagado_proveedor)}
@@ -1031,6 +1159,215 @@ export default function CuentaInternaPage() {
                   <>
                     <Check className="h-4 w-4" />
                     Registrar Pago
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Agregar Documento (FC o NC) */}
+      {showModalDocumento && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="p-6 border-b border-slate-200">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <FileText className="h-5 w-5 text-indigo-600" />
+                Agregar Documento
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Factura suma deuda, Nota de Crédito resta
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Tipo de documento */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Tipo de documento
+                </label>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDocumentoForm({ ...documentoForm, tipoDocumento: 'FC' })}
+                    className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all ${
+                      documentoForm.tipoDocumento === 'FC'
+                        ? 'bg-indigo-600 text-white shadow-lg'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    📄 Factura
+                  </button>
+                  <button
+                    onClick={() => setDocumentoForm({ ...documentoForm, tipoDocumento: 'NC' })}
+                    className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all ${
+                      documentoForm.tipoDocumento === 'NC'
+                        ? 'bg-red-600 text-white shadow-lg'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    📋 Nota de Crédito
+                  </button>
+                </div>
+              </div>
+
+              {/* Quién debe */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  ¿Quién debe? (deuda interna)
+                </label>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDocumentoForm({ ...documentoForm, deudor: 'VH' })}
+                    className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all ${
+                      documentoForm.deudor === 'VH'
+                        ? 'bg-blue-600 text-white shadow-lg'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    VH debe a VC (65%)
+                  </button>
+                  <button
+                    onClick={() => setDocumentoForm({ ...documentoForm, deudor: 'VC' })}
+                    className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all ${
+                      documentoForm.deudor === 'VC'
+                        ? 'bg-emerald-600 text-white shadow-lg'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    VC debe a VH (35%)
+                  </button>
+                </div>
+              </div>
+
+              {/* Info de la acción */}
+              <div className={`p-3 rounded-lg ${
+                documentoForm.tipoDocumento === 'NC' ? 'bg-red-50' : 'bg-indigo-50'
+              }`}>
+                <p className="text-sm">
+                  {documentoForm.tipoDocumento === 'FC' ? (
+                    <>
+                      <strong>Factura:</strong> Se <span className="text-indigo-700 font-semibold">suma</span> a la deuda de {documentoForm.deudor} a {documentoForm.deudor === 'VH' ? 'VC' : 'VH'}
+                    </>
+                  ) : (
+                    <>
+                      <strong>Nota de Crédito:</strong> Se <span className="text-red-700 font-semibold">resta</span> de la deuda de {documentoForm.deudor} a {documentoForm.deudor === 'VH' ? 'VC' : 'VH'}
+                    </>
+                  )}
+                </p>
+              </div>
+
+              {/* Fecha y Número */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Fecha
+                  </label>
+                  <input
+                    type="date"
+                    value={documentoForm.fecha}
+                    onChange={(e) => setDocumentoForm({ ...documentoForm, fecha: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    N° {documentoForm.tipoDocumento}
+                  </label>
+                  <input
+                    type="text"
+                    value={documentoForm.nroDocumento}
+                    onChange={(e) => setDocumentoForm({ ...documentoForm, nroDocumento: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Ej: 12345"
+                  />
+                </div>
+              </div>
+
+              {/* Proveedor */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Proveedor
+                </label>
+                <input
+                  type="text"
+                  value={documentoForm.proveedor}
+                  onChange={(e) => setDocumentoForm({ ...documentoForm, proveedor: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="Nombre del proveedor"
+                />
+              </div>
+
+              {/* Monto */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Monto Total (con IVA)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium">$</span>
+                  <input
+                    type="text"
+                    value={documentoForm.monto || ''}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9.]/g, '')
+                      setDocumentoForm({ ...documentoForm, monto: Number(val) })
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    className="w-full pl-8 pr-4 py-3 border border-slate-300 rounded-xl text-lg font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="0"
+                  />
+                </div>
+                {documentoForm.monto > 0 && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Deuda resultante ({documentoForm.deudor === 'VH' ? '65%' : '35%'} del neto):
+                    <strong className={documentoForm.tipoDocumento === 'NC' ? 'text-red-600' : 'text-indigo-600'}>
+                      {' '}{documentoForm.tipoDocumento === 'NC' ? '-' : '+'}
+                      {formatMoney((documentoForm.monto / 1.21) * (documentoForm.deudor === 'VH' ? 0.65 : 0.35))}
+                    </strong>
+                  </p>
+                )}
+              </div>
+
+              {/* Pagado al proveedor */}
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="pagadoProveedor"
+                  checked={documentoForm.pagadoProveedor}
+                  onChange={(e) => setDocumentoForm({ ...documentoForm, pagadoProveedor: e.target.checked })}
+                  className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <label htmlFor="pagadoProveedor" className="text-sm text-slate-700">
+                  Ya se pagó al proveedor externo
+                </label>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-200 flex gap-3">
+              <button
+                onClick={() => setShowModalDocumento(false)}
+                className="flex-1 py-3 px-4 rounded-xl font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={guardarDocumento}
+                disabled={guardandoDocumento || !documentoForm.nroDocumento || !documentoForm.proveedor || documentoForm.monto <= 0}
+                className={`flex-1 py-3 px-4 rounded-xl font-semibold text-white disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 ${
+                  documentoForm.tipoDocumento === 'NC'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
+              >
+                {guardandoDocumento ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Guardar {documentoForm.tipoDocumento === 'FC' ? 'Factura' : 'Nota de Crédito'}
                   </>
                 )}
               </button>

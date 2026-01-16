@@ -763,35 +763,72 @@ export default function FacturasPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">Monto Total *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      value={formData.monto_total}
-                      onChange={e => setFormData({...formData, monto_total: e.target.value})}
-                      onBlur={calcularMontos}
-                      className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
-                    />
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium">$</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        required
+                        value={formData.monto_total}
+                        onChange={e => {
+                          // Permitir números, punto y coma
+                          let val = e.target.value.replace(/[^0-9.,]/g, '')
+                          // Reemplazar coma por punto para decimales
+                          val = val.replace(',', '.')
+                          setFormData({...formData, monto_total: val})
+                        }}
+                        onBlur={calcularMontos}
+                        placeholder="56024073.50"
+                        className="w-full pl-8 border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all text-lg font-semibold"
+                      />
+                    </div>
+                    {formData.monto_total && parseFloat(formData.monto_total) > 0 && (
+                      <p className="text-sm text-indigo-600 font-semibold mt-1">
+                        = {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(parseFloat(formData.monto_total))}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">Monto Neto</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={formData.monto_neto}
-                      onChange={e => setFormData({...formData, monto_neto: e.target.value})}
-                      className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
-                    />
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium">$</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={formData.monto_neto}
+                        onChange={e => {
+                          let val = e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.')
+                          setFormData({...formData, monto_neto: val})
+                        }}
+                        className="w-full pl-8 border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
+                      />
+                    </div>
+                    {formData.monto_neto && parseFloat(formData.monto_neto) > 0 && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(parseFloat(formData.monto_neto))}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">IVA</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={formData.iva}
-                      onChange={e => setFormData({...formData, iva: e.target.value})}
-                      className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
-                    />
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium">$</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={formData.iva}
+                        onChange={e => {
+                          let val = e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.')
+                          setFormData({...formData, iva: val})
+                        }}
+                        className="w-full pl-8 border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
+                      />
+                    </div>
+                    {formData.iva && parseFloat(formData.iva) > 0 && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(parseFloat(formData.iva))}
+                      </p>
+                    )}
                   </div>
                 </div>
 
