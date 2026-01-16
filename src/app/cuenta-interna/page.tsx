@@ -40,6 +40,17 @@ interface DeudaHistorica {
   porcentaje: number
   montoDeuda: number
   pagado: boolean
+  pagado_proveedor: boolean
+  factura_id?: number
+}
+
+interface PagoInterno {
+  id: number
+  fecha: string
+  pagador: 'VH' | 'VC'
+  receptor: 'VH' | 'VC'
+  monto: number
+  observaciones?: string
 }
 
 type SortField = 'nombre' | 'vh_debe' | 'vc_debe' | 'total_general' | 'deuda_real_vh' | 'deuda_real_vc'
@@ -67,10 +78,23 @@ export default function CuentaInternaPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<'resumen' | 'deuda_vh_vc' | 'deuda_vc_vh'>('resumen')
+  const [activeTab, setActiveTab] = useState<'resumen' | 'deuda_vh_vc' | 'deuda_vc_vh' | 'historial'>('resumen')
 
   // Buscador
   const [busqueda, setBusqueda] = useState('')
+
+  // Modal de pago interno
+  const [showModalPago, setShowModalPago] = useState(false)
+  const [pagoForm, setPagoForm] = useState({
+    pagador: 'VH' as 'VH' | 'VC',
+    monto: 0,
+    observaciones: ''
+  })
+  const [procesandoPago, setProcesandoPago] = useState(false)
+
+  // Historial de pagos internos
+  const [pagosInternos, setPagosInternos] = useState<PagoInterno[]>([])
+  const [fcPagadasInternamente, setFcPagadasInternamente] = useState<DeudaHistorica[]>([])
 
   useEffect(() => {
     loadData()
@@ -172,17 +196,19 @@ export default function CuentaInternaPage() {
         const neto = montoTotal / 1.21
 
         if (row.pagador === 'VH') {
-          // VH debe a VC (35% de facturas de VC)
+          // VH debe a VC (65% de facturas de VC)
           const item: DeudaHistorica = {
             id: row.id,
             fecha: row.fecha || '',
             proveedor,
             nroFactura,
-            montoTotal: montoTotal / 0.65 * 1.21, // Reconstruir monto total original
+            montoTotal: montoTotal / 0.65 * 1.21,
             neto: montoTotal / 0.65,
             porcentaje: 65,
             montoDeuda: montoTotal,
-            pagado: row.pagado
+            pagado: row.pagado,
+            pagado_proveedor: (row as any).pagado_proveedor || false,
+            factura_id: (row as any).factura_id
           }
           vhAvc.push(item)
           totalVHaVC += montoTotal
@@ -198,7 +224,9 @@ export default function CuentaInternaPage() {
             neto: montoTotal / 0.35,
             porcentaje: 35,
             montoDeuda: montoTotal,
-            pagado: row.pagado
+            pagado: row.pagado,
+            pagado_proveedor: (row as any).pagado_proveedor || false,
+            factura_id: (row as any).factura_id
           }
           vcAvh.push(item)
           totalVCaVH += montoTotal
@@ -207,8 +235,14 @@ export default function CuentaInternaPage() {
       })
     }
 
-    setDeudaVHaVC(vhAvc)
-    setDeudaVCaVH(vcAvh)
+    // Separar facturas pagadas internamente para el historial
+    const pagadasVHaVC = vhAvc.filter(d => d.pagado)
+    const pagadasVCaVH = vcAvh.filter(d => d.pagado)
+    setFcPagadasInternamente([...pagadasVHaVC, ...pagadasVCaVH])
+
+    // Filtrar solo las pendientes para mostrar en las tabs de deuda
+    setDeudaVHaVC(vhAvc.filter(d => !d.pagado))
+    setDeudaVCaVH(vcAvh.filter(d => !d.pagado))
     setTotalesCuentaInterna({
       totalVHaVC,
       pagadoVHaVC,
@@ -218,7 +252,113 @@ export default function CuentaInternaPage() {
       pendienteVCaVH: totalVCaVH - pagadoVCaVH
     })
 
+    // Cargar historial de pagos internos
+    const { data: pagosInternosData } = await supabase
+      .from('pagos_internos')
+      .select('*')
+      .order('fecha', { ascending: false })
+
+    if (pagosInternosData) {
+      setPagosInternos(pagosInternosData)
+    }
+
     setLoading(false)
+  }
+
+  // Función para registrar pago interno con FIFO
+  async function registrarPagoInterno() {
+    if (pagoForm.monto <= 0) {
+      alert('El monto debe ser mayor a 0')
+      return
+    }
+
+    setProcesandoPago(true)
+    const receptor = pagoForm.pagador === 'VH' ? 'VC' : 'VH'
+
+    // Obtener facturas pendientes ordenadas por fecha (más viejas primero)
+    const deudasPendientes = pagoForm.pagador === 'VH' ? deudaVHaVC : deudaVCaVH
+    const deudasOrdenadas = [...deudasPendientes].sort((a, b) =>
+      new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+    )
+
+    let montoRestante = pagoForm.monto
+    const facturasAPagar: { id: number, monto: number }[] = []
+
+    // Aplicar FIFO - pagar facturas de las más viejas a las más nuevas
+    for (const deuda of deudasOrdenadas) {
+      if (montoRestante <= 0) break
+
+      const montoAAplicar = Math.min(montoRestante, deuda.montoDeuda)
+      facturasAPagar.push({ id: deuda.id, monto: montoAAplicar })
+      montoRestante -= montoAAplicar
+    }
+
+    if (facturasAPagar.length === 0) {
+      alert('No hay facturas pendientes para pagar')
+      setProcesandoPago(false)
+      return
+    }
+
+    try {
+      // 1. Crear el registro del pago interno
+      const { data: pagoCreado, error: errorPago } = await supabase
+        .from('pagos_internos')
+        .insert({
+          pagador: pagoForm.pagador,
+          receptor,
+          monto: pagoForm.monto - montoRestante, // Monto efectivamente aplicado
+          observaciones: pagoForm.observaciones || `Pago de ${pagoForm.pagador} a ${receptor}`
+        })
+        .select()
+        .single()
+
+      if (errorPago) throw errorPago
+
+      // 2. Marcar las facturas como pagadas internamente
+      for (const fc of facturasAPagar) {
+        // Insertar detalle del pago
+        await supabase
+          .from('pagos_internos_detalle')
+          .insert({
+            pago_interno_id: pagoCreado.id,
+            cuenta_interna_id: fc.id,
+            monto_aplicado: fc.monto
+          })
+
+        // Si el monto aplicado cubre toda la deuda, marcar como pagado
+        const deuda = deudasOrdenadas.find(d => d.id === fc.id)
+        if (deuda && fc.monto >= deuda.montoDeuda) {
+          await supabase
+            .from('cuenta_interna')
+            .update({ pagado: true })
+            .eq('id', fc.id)
+        }
+      }
+
+      alert(`✅ Pago registrado exitosamente\n\nMonto aplicado: $${(pagoForm.monto - montoRestante).toLocaleString('es-AR')}\nFacturas afectadas: ${facturasAPagar.length}${montoRestante > 0 ? `\n\n⚠️ Sobrante no aplicado: $${montoRestante.toLocaleString('es-AR')}` : ''}`)
+
+      // Resetear y recargar
+      setShowModalPago(false)
+      setPagoForm({ pagador: 'VH', monto: 0, observaciones: '' })
+      loadData()
+    } catch (error) {
+      console.error('Error registrando pago:', error)
+      alert('Error al registrar el pago. Verificá la consola.')
+    }
+
+    setProcesandoPago(false)
+  }
+
+  // Función para marcar factura como pagada al proveedor
+  async function togglePagadoProveedor(id: number, valorActual: boolean) {
+    const { error } = await supabase
+      .from('cuenta_interna')
+      .update({ pagado_proveedor: !valorActual })
+      .eq('id', id)
+
+    if (!error) {
+      loadData()
+    }
   }
 
   function handleSort(field: SortField) {
@@ -333,24 +473,33 @@ export default function CuentaInternaPage() {
           </div>
         </div>
 
-        {/* Balance neto */}
+        {/* Balance neto y botón de pago */}
         <div className={`rounded-xl p-4 mb-6 ${
           totalesCuentaInterna.pendienteVHaVC > totalesCuentaInterna.pendienteVCaVH
             ? 'bg-blue-100 border border-blue-300'
             : 'bg-emerald-100 border border-emerald-300'
         }`}>
-          <p className="text-center text-lg">
-            <strong>Balance Neto: </strong>
-            {totalesCuentaInterna.pendienteVHaVC > totalesCuentaInterna.pendienteVCaVH ? (
-              <span className="text-blue-700">
-                VH debe a VC {formatMoney(totalesCuentaInterna.pendienteVHaVC - totalesCuentaInterna.pendienteVCaVH)}
-              </span>
-            ) : (
-              <span className="text-emerald-700">
-                VC debe a VH {formatMoney(totalesCuentaInterna.pendienteVCaVH - totalesCuentaInterna.pendienteVHaVC)}
-              </span>
-            )}
-          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-lg">
+              <strong>Balance Neto: </strong>
+              {totalesCuentaInterna.pendienteVHaVC > totalesCuentaInterna.pendienteVCaVH ? (
+                <span className="text-blue-700">
+                  VH debe a VC {formatMoney(totalesCuentaInterna.pendienteVHaVC - totalesCuentaInterna.pendienteVCaVH)}
+                </span>
+              ) : (
+                <span className="text-emerald-700">
+                  VC debe a VH {formatMoney(totalesCuentaInterna.pendienteVCaVH - totalesCuentaInterna.pendienteVHaVC)}
+                </span>
+              )}
+            </p>
+            <button
+              onClick={() => setShowModalPago(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
+            >
+              <DollarSign className="h-4 w-4" />
+              Registrar Pago Interno
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -390,6 +539,19 @@ export default function CuentaInternaPage() {
               <span className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
                 Deuda VC a VH ({deudaVCaVH.length})
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('historial')}
+              className={`px-6 py-4 font-medium text-sm whitespace-nowrap transition-colors ${
+                activeTab === 'historial'
+                  ? 'text-amber-700 border-b-2 border-amber-600 bg-amber-50'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <History className="h-4 w-4" />
+                Historial ({pagosInternos.length})
               </span>
             </button>
           </div>
@@ -469,7 +631,7 @@ export default function CuentaInternaPage() {
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold text-blue-800">Detalle Deuda VH a VC</h3>
                   <p className="text-sm text-slate-500">
-                    Facturas de VC donde VH paga el 65% del neto • Total: {formatMoney(totalesCuentaInterna.totalVHaVC)}
+                    Facturas de VC donde VH paga el 65% del neto • Total: {formatMoney(totalesCuentaInterna.pendienteVHaVC)}
                   </p>
                 </div>
 
@@ -482,31 +644,36 @@ export default function CuentaInternaPage() {
                         <th className="px-3 py-2 text-left font-semibold text-slate-600">N° FC</th>
                         <th className="px-3 py-2 text-right font-semibold text-slate-600">%</th>
                         <th className="px-3 py-2 text-right font-semibold text-blue-700">Monto Deuda</th>
-                        <th className="px-3 py-2 text-center font-semibold text-slate-600">Pagado</th>
+                        <th className="px-3 py-2 text-center font-semibold text-slate-600">Pagado Prov</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {deudaVHaVC.map((d) => (
-                        <tr key={d.id} className={`hover:bg-slate-50 ${d.pagado ? 'bg-emerald-50/50' : ''}`}>
+                        <tr key={d.id} className="hover:bg-slate-50">
                           <td className="px-3 py-2 text-slate-600">{formatDate(d.fecha)}</td>
                           <td className="px-3 py-2 font-medium text-slate-800">{d.proveedor}</td>
                           <td className="px-3 py-2 text-slate-600">{d.nroFactura}</td>
                           <td className="px-3 py-2 text-right text-slate-600">{d.porcentaje}%</td>
                           <td className="px-3 py-2 text-right font-semibold text-blue-700">{formatMoney(d.montoDeuda)}</td>
                           <td className="px-3 py-2 text-center">
-                            {d.pagado ? (
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">Si</span>
-                            ) : (
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">No</span>
-                            )}
+                            <button
+                              onClick={() => togglePagadoProveedor(d.id, d.pagado_proveedor)}
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+                                d.pagado_proveedor
+                                  ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                  : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                              }`}
+                            >
+                              {d.pagado_proveedor ? <><Check className="h-3 w-3 mr-1" /> Pagado</> : 'Pendiente'}
+                            </button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="bg-blue-100 font-bold">
-                        <td colSpan={4} className="px-3 py-2 text-slate-800">TOTAL</td>
-                        <td className="px-3 py-2 text-right text-blue-800">{formatMoney(totalesCuentaInterna.totalVHaVC)}</td>
+                        <td colSpan={4} className="px-3 py-2 text-slate-800">TOTAL PENDIENTE</td>
+                        <td className="px-3 py-2 text-right text-blue-800">{formatMoney(totalesCuentaInterna.pendienteVHaVC)}</td>
                         <td></td>
                       </tr>
                     </tfoot>
@@ -520,7 +687,7 @@ export default function CuentaInternaPage() {
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold text-emerald-800">Detalle Deuda VC a VH</h3>
                   <p className="text-sm text-slate-500">
-                    Facturas de VH donde VC paga el 35% del neto • Total: {formatMoney(totalesCuentaInterna.totalVCaVH)}
+                    Facturas de VH donde VC paga el 35% del neto • Total: {formatMoney(totalesCuentaInterna.pendienteVCaVH)}
                   </p>
                 </div>
 
@@ -533,31 +700,36 @@ export default function CuentaInternaPage() {
                         <th className="px-3 py-2 text-left font-semibold text-slate-600">N° FC</th>
                         <th className="px-3 py-2 text-right font-semibold text-slate-600">%</th>
                         <th className="px-3 py-2 text-right font-semibold text-emerald-700">Monto Deuda</th>
-                        <th className="px-3 py-2 text-center font-semibold text-slate-600">Pagado</th>
+                        <th className="px-3 py-2 text-center font-semibold text-slate-600">Pagado Prov</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {deudaVCaVH.map((d) => (
-                        <tr key={d.id} className={`hover:bg-slate-50 ${d.pagado ? 'bg-emerald-50/50' : ''}`}>
+                        <tr key={d.id} className="hover:bg-slate-50">
                           <td className="px-3 py-2 text-slate-600">{formatDate(d.fecha)}</td>
                           <td className="px-3 py-2 font-medium text-slate-800">{d.proveedor}</td>
                           <td className="px-3 py-2 text-slate-600">{d.nroFactura}</td>
                           <td className="px-3 py-2 text-right text-slate-600">{d.porcentaje}%</td>
                           <td className="px-3 py-2 text-right font-semibold text-emerald-700">{formatMoney(d.montoDeuda)}</td>
                           <td className="px-3 py-2 text-center">
-                            {d.pagado ? (
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">Si</span>
-                            ) : (
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">No</span>
-                            )}
+                            <button
+                              onClick={() => togglePagadoProveedor(d.id, d.pagado_proveedor)}
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+                                d.pagado_proveedor
+                                  ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                  : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                              }`}
+                            >
+                              {d.pagado_proveedor ? <><Check className="h-3 w-3 mr-1" /> Pagado</> : 'Pendiente'}
+                            </button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="bg-emerald-100 font-bold">
-                        <td colSpan={4} className="px-3 py-2 text-slate-800">TOTAL</td>
-                        <td className="px-3 py-2 text-right text-emerald-800">{formatMoney(totalesCuentaInterna.totalVCaVH)}</td>
+                        <td colSpan={4} className="px-3 py-2 text-slate-800">TOTAL PENDIENTE</td>
+                        <td className="px-3 py-2 text-right text-emerald-800">{formatMoney(totalesCuentaInterna.pendienteVCaVH)}</td>
                         <td></td>
                       </tr>
                     </tfoot>
@@ -565,9 +737,251 @@ export default function CuentaInternaPage() {
                 </div>
               </div>
             )}
+
+            {activeTab === 'historial' && (
+              <div>
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-amber-800">Historial de Pagos Internos</h3>
+                  <p className="text-sm text-slate-500">
+                    Registro de pagos realizados entre VH y VC
+                  </p>
+                </div>
+
+                {pagosInternos.length === 0 ? (
+                  <div className="text-center py-12 text-slate-500">
+                    <Receipt className="h-12 w-12 mx-auto mb-3 text-slate-300" />
+                    <p>No hay pagos internos registrados</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto mb-8">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-amber-50">
+                          <th className="px-3 py-2 text-left font-semibold text-slate-600">Fecha</th>
+                          <th className="px-3 py-2 text-left font-semibold text-slate-600">Pagador</th>
+                          <th className="px-3 py-2 text-left font-semibold text-slate-600">Receptor</th>
+                          <th className="px-3 py-2 text-right font-semibold text-amber-700">Monto</th>
+                          <th className="px-3 py-2 text-left font-semibold text-slate-600">Observaciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {pagosInternos.map((p) => (
+                          <tr key={p.id} className="hover:bg-slate-50">
+                            <td className="px-3 py-2 text-slate-600">{formatDate(p.fecha)}</td>
+                            <td className="px-3 py-2">
+                              <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                p.pagador === 'VH' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                              }`}>
+                                {p.pagador}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                p.receptor === 'VH' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                              }`}>
+                                {p.receptor}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-right font-semibold text-amber-700">{formatMoney(p.monto)}</td>
+                            <td className="px-3 py-2 text-slate-600">{p.observaciones || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Facturas pagadas internamente */}
+                <div className="mt-8">
+                  <h4 className="text-md font-semibold text-slate-700 mb-3">Facturas Saldadas Internamente ({fcPagadasInternamente.length})</h4>
+                  {fcPagadasInternamente.length === 0 ? (
+                    <p className="text-sm text-slate-500">No hay facturas saldadas aún</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-slate-100">
+                            <th className="px-3 py-2 text-left font-semibold text-slate-600">Fecha</th>
+                            <th className="px-3 py-2 text-left font-semibold text-slate-600">Proveedor</th>
+                            <th className="px-3 py-2 text-left font-semibold text-slate-600">N° FC</th>
+                            <th className="px-3 py-2 text-center font-semibold text-slate-600">Deuda de</th>
+                            <th className="px-3 py-2 text-right font-semibold text-slate-700">Monto</th>
+                            <th className="px-3 py-2 text-center font-semibold text-slate-600">Pagado Prov</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {fcPagadasInternamente.map((d) => (
+                            <tr key={d.id} className="hover:bg-slate-50">
+                              <td className="px-3 py-2 text-slate-600">{formatDate(d.fecha)}</td>
+                              <td className="px-3 py-2 font-medium text-slate-800">{d.proveedor}</td>
+                              <td className="px-3 py-2 text-slate-600">{d.nroFactura}</td>
+                              <td className="px-3 py-2 text-center">
+                                <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                  d.porcentaje === 65 ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                                }`}>
+                                  {d.porcentaje === 65 ? 'VH' : 'VC'}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-right font-semibold text-slate-700">{formatMoney(d.montoDeuda)}</td>
+                              <td className="px-3 py-2 text-center">
+                                <button
+                                  onClick={() => togglePagadoProveedor(d.id, d.pagado_proveedor)}
+                                  className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+                                    d.pagado_proveedor
+                                      ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                      : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                                  }`}
+                                >
+                                  {d.pagado_proveedor ? <><Check className="h-3 w-3 mr-1" /> Si</> : 'No'}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>
+
+      {/* Modal de Pago Interno */}
+      {showModalPago && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="p-6 border-b border-slate-200">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-purple-600" />
+                Registrar Pago Interno
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">
+                El pago se aplicará a las facturas más antiguas primero (FIFO)
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Quién paga */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  ¿Quién realiza el pago?
+                </label>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setPagoForm({ ...pagoForm, pagador: 'VH' })}
+                    className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all ${
+                      pagoForm.pagador === 'VH'
+                        ? 'bg-blue-600 text-white shadow-lg'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    VH paga a VC
+                  </button>
+                  <button
+                    onClick={() => setPagoForm({ ...pagoForm, pagador: 'VC' })}
+                    className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all ${
+                      pagoForm.pagador === 'VC'
+                        ? 'bg-emerald-600 text-white shadow-lg'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    VC paga a VH
+                  </button>
+                </div>
+              </div>
+
+              {/* Info de deuda pendiente */}
+              <div className={`p-3 rounded-lg ${pagoForm.pagador === 'VH' ? 'bg-blue-50' : 'bg-emerald-50'}`}>
+                <p className="text-sm">
+                  <strong>Deuda pendiente:</strong>{' '}
+                  {formatMoney(pagoForm.pagador === 'VH' ? totalesCuentaInterna.pendienteVHaVC : totalesCuentaInterna.pendienteVCaVH)}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {pagoForm.pagador === 'VH' ? deudaVHaVC.length : deudaVCaVH.length} facturas pendientes
+                </p>
+              </div>
+
+              {/* Monto */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Monto a pagar
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium">$</span>
+                  <input
+                    type="text"
+                    value={pagoForm.monto || ''}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, '')
+                      setPagoForm({ ...pagoForm, monto: Number(val) })
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    className="w-full pl-8 pr-4 py-3 border border-slate-300 rounded-xl text-lg font-semibold focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    placeholder="0"
+                  />
+                </div>
+                {/* Botones rápidos */}
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => setPagoForm({ ...pagoForm, monto: pagoForm.pagador === 'VH' ? totalesCuentaInterna.pendienteVHaVC : totalesCuentaInterna.pendienteVCaVH })}
+                    className="text-xs px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors"
+                  >
+                    Pagar todo
+                  </button>
+                  <button
+                    onClick={() => setPagoForm({ ...pagoForm, monto: Math.floor((pagoForm.pagador === 'VH' ? totalesCuentaInterna.pendienteVHaVC : totalesCuentaInterna.pendienteVCaVH) / 2) })}
+                    className="text-xs px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors"
+                  >
+                    50%
+                  </button>
+                </div>
+              </div>
+
+              {/* Observaciones */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Observaciones (opcional)
+                </label>
+                <textarea
+                  value={pagoForm.observaciones}
+                  onChange={(e) => setPagoForm({ ...pagoForm, observaciones: e.target.value })}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  rows={2}
+                  placeholder="Ej: Transferencia 15/01"
+                />
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-200 flex gap-3">
+              <button
+                onClick={() => setShowModalPago(false)}
+                className="flex-1 py-3 px-4 rounded-xl font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={registrarPagoInterno}
+                disabled={procesandoPago || pagoForm.monto <= 0}
+                className="flex-1 py-3 px-4 rounded-xl font-semibold text-white bg-purple-600 hover:bg-purple-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              >
+                {procesandoPago ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Procesando...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Registrar Pago
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
