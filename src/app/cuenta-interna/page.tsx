@@ -272,6 +272,15 @@ export default function CuentaInternaPage() {
       return
     }
 
+    const deudaTotal = pagoForm.pagador === 'VH'
+      ? totalesCuentaInterna.pendienteVHaVC
+      : totalesCuentaInterna.pendienteVCaVH
+
+    if (pagoForm.monto > deudaTotal) {
+      alert(`El monto ingresado ($${pagoForm.monto.toLocaleString('es-AR')}) supera la deuda total ($${deudaTotal.toLocaleString('es-AR')}).\n\nAjustá el monto para continuar.`)
+      return
+    }
+
     setProcesandoPago(true)
     const receptor = pagoForm.pagador === 'VH' ? 'VC' : 'VH'
 
@@ -335,7 +344,12 @@ export default function CuentaInternaPage() {
         }
       }
 
-      alert(`✅ Pago registrado exitosamente\n\nMonto aplicado: $${(pagoForm.monto - montoRestante).toLocaleString('es-AR')}\nFacturas afectadas: ${facturasAPagar.length}${montoRestante > 0 ? `\n\n⚠️ Sobrante no aplicado: $${montoRestante.toLocaleString('es-AR')}` : ''}`)
+      const fcCompletas = facturasAPagar.filter(f => {
+        const deuda = deudasOrdenadas.find(d => d.id === f.id)
+        return deuda && f.monto >= deuda.montoDeuda
+      }).length
+
+      alert(`✅ Pago registrado exitosamente\n\nMonto: $${pagoForm.monto.toLocaleString('es-AR')}\nFacturas saldadas completamente: ${fcCompletas}\nFacturas afectadas: ${facturasAPagar.length}`)
 
       // Resetear y recargar
       setShowModalPago(false)
