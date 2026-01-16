@@ -159,20 +159,49 @@ export default function Dashboard() {
     .flatMap(p => p.facturas || [])
 
   // Calcular totales de facturas seleccionadas
+  const facturasSeleccionadasData = todasLasFacturas.filter(f => facturasSeleccionadas.includes(f.id))
+
+  // Calcular deuda real según regla 65/35
+  // VH paga: 100% de FC de VH + 65% del neto de FC de VC
+  // VC paga: 100% de FC de VC + 35% del neto de FC de VH
+  const deudaRealVH = facturasSeleccionadasData.reduce((sum, f) => {
+    const saldoNeto = f.saldo_pendiente / 1.21
+    const saldoIva = f.saldo_pendiente - saldoNeto
+    if (f.empresa === 'VH') {
+      // FC de VH: VH paga 65% neto + 100% IVA
+      return sum + (saldoNeto * 0.65) + saldoIva
+    } else {
+      // FC de VC: VH paga 65% neto
+      return sum + (saldoNeto * 0.65)
+    }
+  }, 0)
+
+  const deudaRealVC = facturasSeleccionadasData.reduce((sum, f) => {
+    const saldoNeto = f.saldo_pendiente / 1.21
+    const saldoIva = f.saldo_pendiente - saldoNeto
+    if (f.empresa === 'VC') {
+      // FC de VC: VC paga 35% neto + 100% IVA
+      return sum + (saldoNeto * 0.35) + saldoIva
+    } else {
+      // FC de VH: VC paga 35% neto
+      return sum + (saldoNeto * 0.35)
+    }
+  }, 0)
+
   const totalesSeleccionados = {
     cantidad: facturasSeleccionadas.length,
-    vh: todasLasFacturas
-      .filter(f => facturasSeleccionadas.includes(f.id) && f.empresa === 'VH')
+    vh: facturasSeleccionadasData
+      .filter(f => f.empresa === 'VH')
       .reduce((sum, f) => sum + f.saldo_pendiente, 0),
-    vc: todasLasFacturas
-      .filter(f => facturasSeleccionadas.includes(f.id) && f.empresa === 'VC')
+    vc: facturasSeleccionadasData
+      .filter(f => f.empresa === 'VC')
       .reduce((sum, f) => sum + f.saldo_pendiente, 0),
-    total: todasLasFacturas
-      .filter(f => facturasSeleccionadas.includes(f.id))
+    total: facturasSeleccionadasData
       .reduce((sum, f) => sum + f.saldo_pendiente, 0),
-    montoTotal: todasLasFacturas
-      .filter(f => facturasSeleccionadas.includes(f.id))
-      .reduce((sum, f) => sum + f.monto_total, 0)
+    montoTotal: facturasSeleccionadasData
+      .reduce((sum, f) => sum + f.monto_total, 0),
+    deudaRealVH,
+    deudaRealVC
   }
 
   async function loadData() {
@@ -457,6 +486,18 @@ export default function Dashboard() {
                         <div className="flex items-center gap-2 bg-yellow-500/20 px-4 py-2 rounded-xl">
                           <span className="text-yellow-300 text-sm font-medium">TOTAL:</span>
                           <span className="text-yellow-300 font-extrabold text-2xl">{formatMoney(totalesSeleccionados.total)}</span>
+                        </div>
+                      </div>
+                      {/* Deuda Real 65/35 */}
+                      <div className="flex items-center gap-4 mt-2 pt-2 border-t border-slate-700">
+                        <span className="text-slate-500 text-xs">Deuda Real (65/35):</span>
+                        <div className="flex items-center gap-1 bg-blue-900/50 px-3 py-1 rounded-lg">
+                          <span className="text-blue-300 text-xs font-medium">VH:</span>
+                          <span className="text-blue-300 font-bold">{formatMoney(totalesSeleccionados.deudaRealVH)}</span>
+                        </div>
+                        <div className="flex items-center gap-1 bg-emerald-900/50 px-3 py-1 rounded-lg">
+                          <span className="text-emerald-300 text-xs font-medium">VC:</span>
+                          <span className="text-emerald-300 font-bold">{formatMoney(totalesSeleccionados.deudaRealVC)}</span>
                         </div>
                       </div>
                     </div>
