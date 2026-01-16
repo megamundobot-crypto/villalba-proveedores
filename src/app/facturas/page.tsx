@@ -78,6 +78,7 @@ export default function FacturasPage() {
   const [facturasSeleccionadas, setFacturasSeleccionadas] = useState<number[]>([])
 
   const [formData, setFormData] = useState({
+    tipo_documento: 'FC' as 'FC' | 'NC',
     proveedor_id: '',
     empresa: 'VH' as 'VH' | 'VC',
     numero: '',
@@ -245,6 +246,7 @@ export default function FacturasPage() {
   function openNewModal() {
     setEditingFactura(null)
     setFormData({
+      tipo_documento: 'FC',
       proveedor_id: '',
       empresa: 'VH',
       numero: '',
@@ -264,15 +266,18 @@ export default function FacturasPage() {
 
   function openEditModal(factura: Factura) {
     setEditingFactura(factura)
+    // Detectar tipo de documento por el monto (NC tiene monto negativo) o por el número
+    const esNC = factura.monto_total < 0 || factura.numero.toUpperCase().startsWith('NC')
     setFormData({
+      tipo_documento: esNC ? 'NC' : 'FC',
       proveedor_id: String(factura.proveedor_id),
       empresa: factura.empresa,
       numero: factura.numero,
       fecha: factura.fecha,
       fecha_vencimiento: factura.fecha_vencimiento || '',
-      monto_total: String(factura.monto_total),
-      monto_neto: String(factura.monto_neto || ''),
-      iva: String(factura.iva || ''),
+      monto_total: String(Math.abs(factura.monto_total)),
+      monto_neto: String(Math.abs(factura.monto_neto || 0) || ''),
+      iva: String(Math.abs(factura.iva || 0) || ''),
       aplica_65_35: factura.aplica_65_35,
       descuento_pronto_pago: String(factura.descuento_pronto_pago || ''),
       monto_descuento: String(factura.monto_descuento || ''),
@@ -285,15 +290,21 @@ export default function FacturasPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
+    // Para NC, los montos son negativos (restan de la deuda)
+    const multiplicador = formData.tipo_documento === 'NC' ? -1 : 1
+    const montoTotal = parseFloat(formData.monto_total) * multiplicador
+    const montoNeto = formData.monto_neto ? parseFloat(formData.monto_neto) * multiplicador : null
+    const iva = formData.iva ? parseFloat(formData.iva) * multiplicador : null
+
     const dataToSave = {
       proveedor_id: parseInt(formData.proveedor_id),
       empresa: formData.empresa,
       numero: formData.numero,
       fecha: formData.fecha,
       fecha_vencimiento: formData.fecha_vencimiento || null,
-      monto_total: parseFloat(formData.monto_total),
-      monto_neto: formData.monto_neto ? parseFloat(formData.monto_neto) : null,
-      iva: formData.iva ? parseFloat(formData.iva) : null,
+      monto_total: montoTotal,
+      monto_neto: montoNeto,
+      iva: iva,
       aplica_65_35: formData.aplica_65_35,
       descuento_pronto_pago: formData.descuento_pronto_pago ? parseFloat(formData.descuento_pronto_pago) : null,
       monto_descuento: formData.monto_descuento ? parseFloat(formData.monto_descuento) : null,
@@ -302,20 +313,21 @@ export default function FacturasPage() {
     }
 
     const proveedorNombre = proveedores.find(p => p.id === parseInt(formData.proveedor_id))?.nombre || 'Desconocido'
+    const tipoDoc = formData.tipo_documento === 'NC' ? 'Nota de Crédito' : 'Factura'
 
     if (editingFactura) {
       await supabase.from('facturas').update(dataToSave).eq('id', editingFactura.id)
       await registrarAuditoria(
         'EDITAR_FACTURA',
-        `Factura ${formData.numero} de ${proveedorNombre} modificada`,
-        { factura_id: editingFactura.id, numero: formData.numero, proveedor: proveedorNombre, empresa: formData.empresa, monto: formData.monto_total }
+        `${tipoDoc} ${formData.numero} de ${proveedorNombre} modificada`,
+        { factura_id: editingFactura.id, numero: formData.numero, proveedor: proveedorNombre, empresa: formData.empresa, monto: montoTotal, tipo: formData.tipo_documento }
       )
     } else {
       const { data: nuevaFactura } = await supabase.from('facturas').insert([dataToSave]).select().single()
       await registrarAuditoria(
         'CREAR_FACTURA',
-        `Nueva factura ${formData.numero} de ${proveedorNombre} por $${parseFloat(formData.monto_total).toLocaleString('es-AR')}`,
-        { factura_id: nuevaFactura?.id, numero: formData.numero, proveedor: proveedorNombre, empresa: formData.empresa, monto: formData.monto_total }
+        `Nueva ${tipoDoc} ${formData.numero} de ${proveedorNombre} por $${Math.abs(parseFloat(formData.monto_total)).toLocaleString('es-AR')}`,
+        { factura_id: nuevaFactura?.id, numero: formData.numero, proveedor: proveedorNombre, empresa: formData.empresa, monto: montoTotal, tipo: formData.tipo_documento }
       )
     }
 
@@ -434,13 +446,13 @@ export default function FacturasPage() {
                 ))}
               </select>
 
-              {/* Botón nueva factura */}
+              {/* Botón nueva factura/NC */}
               <button
                 onClick={openNewModal}
                 className="btn-primary flex items-center gap-2"
               >
                 {Icons.plus}
-                Nueva Factura
+                Nueva FC / NC
               </button>
             </div>
 
@@ -633,15 +645,28 @@ export default function FacturasPage() {
                           {factura.empresa}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-slate-600 font-mono text-sm">{factura.numero}</td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-2">
+                          {factura.monto_total < 0 && (
+                            <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded">NC</span>
+                          )}
+                          <span className={`font-mono text-sm ${factura.monto_total < 0 ? 'text-red-600' : 'text-slate-600'}`}>
+                            {factura.numero}
+                          </span>
+                        </div>
+                      </td>
                       <td className="px-5 py-4 text-slate-600">
                         {new Date(factura.fecha).toLocaleDateString('es-AR')}
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <span className="font-semibold text-slate-700 tabular-nums">{formatMoney(factura.monto_total)}</span>
+                        <span className={`font-semibold tabular-nums ${factura.monto_total < 0 ? 'text-red-600' : 'text-slate-700'}`}>
+                          {factura.monto_total < 0 ? '-' : ''}{formatMoney(Math.abs(factura.monto_total))}
+                        </span>
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <span className="font-bold text-red-600 tabular-nums">{formatMoney(Number(factura.saldo_pendiente))}</span>
+                        <span className={`font-bold tabular-nums ${Number(factura.saldo_pendiente) < 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {Number(factura.saldo_pendiente) < 0 ? '-' : ''}{formatMoney(Math.abs(Number(factura.saldo_pendiente)))}
+                        </span>
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex justify-center gap-1">
@@ -690,7 +715,7 @@ export default function FacturasPage() {
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-scaleIn">
               <div className="p-5 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-white rounded-t-2xl z-10">
                 <h2 className="text-xl font-bold text-slate-800">
-                  {editingFactura ? 'Editar Factura' : 'Nueva Factura'}
+                  {editingFactura ? `Editar ${formData.tipo_documento === 'NC' ? 'Nota de Crédito' : 'Factura'}` : `Nueva ${formData.tipo_documento === 'NC' ? 'Nota de Crédito' : 'Factura'}`}
                 </h2>
                 <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500">
                   {Icons.x}
@@ -698,6 +723,38 @@ export default function FacturasPage() {
               </div>
 
               <form onSubmit={handleSubmit} className="p-5 space-y-5">
+                {/* Selector de tipo de documento */}
+                <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, tipo_documento: 'FC'})}
+                    className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                      formData.tipo_documento === 'FC'
+                        ? 'bg-indigo-600 text-white shadow-lg'
+                        : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200'
+                    }`}
+                  >
+                    📄 Factura (FC)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, tipo_documento: 'NC'})}
+                    className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                      formData.tipo_documento === 'NC'
+                        ? 'bg-red-600 text-white shadow-lg'
+                        : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200'
+                    }`}
+                  >
+                    📋 Nota de Crédito (NC)
+                  </button>
+                </div>
+
+                {formData.tipo_documento === 'NC' && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+                    <strong>Nota de Crédito:</strong> El monto se restará de la deuda del proveedor
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">Proveedor *</label>
