@@ -85,6 +85,10 @@ export default function CuentaInternaPage() {
   // Buscador
   const [busqueda, setBusqueda] = useState('')
 
+  // Filtros para tablas de deuda
+  const [filtroDeuda, setFiltroDeuda] = useState<'todos' | 'pendientes' | 'pagados'>('todos')
+  const [ordenDeuda, setOrdenDeuda] = useState<'fecha_asc' | 'fecha_desc' | 'proveedor' | 'monto_desc'>('fecha_desc')
+
   // Modal de pago interno
   const [showModalPago, setShowModalPago] = useState(false)
   const [pagoForm, setPagoForm] = useState({
@@ -134,7 +138,7 @@ export default function CuentaInternaPage() {
     // Cargar facturas y pagos para resumen por proveedor
     const { data: facturasData } = await supabase
       .from('facturas')
-      .select('id, proveedor_id, empresa, monto_total, numero')
+      .select('id, proveedor_id, empresa, monto_total, numero, estado')
 
     const { data: pagosData } = await supabase
       .from('pagos')
@@ -144,6 +148,23 @@ export default function CuentaInternaPage() {
     if (pagosData) {
       pagosData.forEach((p: any) => {
         pagosPorFactura[p.factura_id] = (pagosPorFactura[p.factura_id] || 0) + Number(p.monto)
+      })
+    }
+
+    // Crear mapa de facturas pendientes (con saldo > 0) para verificar estado de pago al proveedor
+    // Una factura está "pagada al proveedor" si:
+    // 1. No existe en la tabla facturas, o
+    // 2. Tiene estado 'pagada' o 'anulada', o
+    // 3. Tiene saldo <= 0
+    const facturasPendientesIds = new Set<number>()
+    if (facturasData) {
+      facturasData.forEach((f: any) => {
+        const pagado = pagosPorFactura[f.id] || 0
+        const saldo = Number(f.monto_total) - pagado
+        // Solo marcar como pendiente si tiene saldo y no está anulada/pagada
+        if (saldo > 0 && f.estado !== 'pagada' && f.estado !== 'anulada') {
+          facturasPendientesIds.add(f.id)
+        }
       })
     }
 
@@ -210,14 +231,24 @@ export default function CuentaInternaPage() {
 
         const montoTotal = Number(row.monto) || 0
         const neto = montoTotal / 1.21
+        const facturaId = (row as any).factura_id
+
+        // Determinar si está pagado al proveedor:
+        // 1. Si tiene factura_id y NO está en facturasPendientesIds => pagado
+        // 2. Si tiene pagado_proveedor explícito en la BD => usar ese valor
+        // 3. Si no tiene factura_id => usar el campo pagado del Excel
+        let pagadoAlProveedor: boolean
+        if (facturaId) {
+          // Si tiene factura_id, verificar si la factura sigue pendiente
+          pagadoAlProveedor = !facturasPendientesIds.has(facturaId)
+        } else if ((row as any).pagado_proveedor !== undefined) {
+          pagadoAlProveedor = (row as any).pagado_proveedor
+        } else {
+          pagadoAlProveedor = row.pagado
+        }
 
         if (row.pagador === 'VH') {
           // VH debe a VC (65% de facturas de VC)
-          // El campo "pagado" del Excel indica si se pagó al proveedor externo
-          // Usamos pagado_proveedor si existe, sino usamos pagado del Excel
-          const pagadoAlProveedor = (row as any).pagado_proveedor !== undefined
-            ? (row as any).pagado_proveedor
-            : row.pagado
           const item: DeudaHistorica = {
             id: row.id,
             fecha: row.fecha || '',
@@ -229,16 +260,12 @@ export default function CuentaInternaPage() {
             montoDeuda: montoTotal,
             pagado: row.pagado,
             pagado_proveedor: pagadoAlProveedor,
-            factura_id: (row as any).factura_id
+            factura_id: facturaId
           }
           vhAvc.push(item)
           totalVHaVC += montoTotal
         } else {
           // VC debe a VH (35% de facturas de VH)
-          // El campo "pagado" del Excel indica si se pagó al proveedor externo
-          const pagadoAlProveedor = (row as any).pagado_proveedor !== undefined
-            ? (row as any).pagado_proveedor
-            : row.pagado
           const item: DeudaHistorica = {
             id: row.id,
             fecha: row.fecha || '',
@@ -250,7 +277,7 @@ export default function CuentaInternaPage() {
             montoDeuda: montoTotal,
             pagado: row.pagado,
             pagado_proveedor: pagadoAlProveedor,
-            factura_id: (row as any).factura_id
+            factura_id: facturaId
           }
           vcAvh.push(item)
           totalVCaVH += montoTotal
@@ -705,11 +732,36 @@ export default function CuentaInternaPage() {
           <div className="p-6">
             {activeTab === 'deuda_vh_vc' && (
               <div>
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-blue-800">Detalle Deuda VH a VC</h3>
-                  <p className="text-sm text-slate-500">
-                    Facturas de VC donde VH paga el 65% del neto • Total: {formatMoney(totalesCuentaInterna.pendienteVHaVC)}
-                  </p>
+                <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-blue-800">Detalle Deuda VH a VC</h3>
+                    <p className="text-sm text-slate-500">
+                      Facturas de VC donde VH paga el 65% del neto • Total: {formatMoney(totalesCuentaInterna.pendienteVHaVC)}
+                    </p>
+                  </div>
+
+                  {/* Filtros */}
+                  <div className="flex flex-wrap gap-2">
+                    <select
+                      value={filtroDeuda}
+                      onChange={(e) => setFiltroDeuda(e.target.value as typeof filtroDeuda)}
+                      className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="todos">Todos</option>
+                      <option value="pendientes">Pend. Proveedor</option>
+                      <option value="pagados">Pagados Prov.</option>
+                    </select>
+                    <select
+                      value={ordenDeuda}
+                      onChange={(e) => setOrdenDeuda(e.target.value as typeof ordenDeuda)}
+                      className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="fecha_desc">Más recientes</option>
+                      <option value="fecha_asc">Más antiguas</option>
+                      <option value="proveedor">Proveedor A-Z</option>
+                      <option value="monto_desc">Mayor monto</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -726,7 +778,20 @@ export default function CuentaInternaPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {deudaVHaVC.map((d) => (
+                      {deudaVHaVC
+                        .filter(d => {
+                          if (filtroDeuda === 'pendientes') return !d.pagado_proveedor
+                          if (filtroDeuda === 'pagados') return d.pagado_proveedor
+                          return true
+                        })
+                        .sort((a, b) => {
+                          if (ordenDeuda === 'fecha_asc') return new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+                          if (ordenDeuda === 'fecha_desc') return new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+                          if (ordenDeuda === 'proveedor') return a.proveedor.localeCompare(b.proveedor)
+                          if (ordenDeuda === 'monto_desc') return Math.abs(b.montoDeuda) - Math.abs(a.montoDeuda)
+                          return 0
+                        })
+                        .map((d) => (
                         <tr key={d.id} className={`hover:bg-slate-50 ${d.montoDeuda < 0 ? 'bg-red-50' : ''}`}>
                           <td className="px-3 py-2 text-slate-600">{formatDate(d.fecha)}</td>
                           <td className="px-3 py-2 font-medium text-slate-800">{d.proveedor}</td>
@@ -777,11 +842,36 @@ export default function CuentaInternaPage() {
 
             {activeTab === 'deuda_vc_vh' && (
               <div>
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-emerald-800">Detalle Deuda VC a VH</h3>
-                  <p className="text-sm text-slate-500">
-                    Facturas de VH donde VC paga el 35% del neto • Total: {formatMoney(totalesCuentaInterna.pendienteVCaVH)}
-                  </p>
+                <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-emerald-800">Detalle Deuda VC a VH</h3>
+                    <p className="text-sm text-slate-500">
+                      Facturas de VH donde VC paga el 35% del neto • Total: {formatMoney(totalesCuentaInterna.pendienteVCaVH)}
+                    </p>
+                  </div>
+
+                  {/* Filtros */}
+                  <div className="flex flex-wrap gap-2">
+                    <select
+                      value={filtroDeuda}
+                      onChange={(e) => setFiltroDeuda(e.target.value as typeof filtroDeuda)}
+                      className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    >
+                      <option value="todos">Todos</option>
+                      <option value="pendientes">Pend. Proveedor</option>
+                      <option value="pagados">Pagados Prov.</option>
+                    </select>
+                    <select
+                      value={ordenDeuda}
+                      onChange={(e) => setOrdenDeuda(e.target.value as typeof ordenDeuda)}
+                      className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    >
+                      <option value="fecha_desc">Más recientes</option>
+                      <option value="fecha_asc">Más antiguas</option>
+                      <option value="proveedor">Proveedor A-Z</option>
+                      <option value="monto_desc">Mayor monto</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -798,7 +888,20 @@ export default function CuentaInternaPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {deudaVCaVH.map((d) => (
+                      {deudaVCaVH
+                        .filter(d => {
+                          if (filtroDeuda === 'pendientes') return !d.pagado_proveedor
+                          if (filtroDeuda === 'pagados') return d.pagado_proveedor
+                          return true
+                        })
+                        .sort((a, b) => {
+                          if (ordenDeuda === 'fecha_asc') return new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+                          if (ordenDeuda === 'fecha_desc') return new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+                          if (ordenDeuda === 'proveedor') return a.proveedor.localeCompare(b.proveedor)
+                          if (ordenDeuda === 'monto_desc') return Math.abs(b.montoDeuda) - Math.abs(a.montoDeuda)
+                          return 0
+                        })
+                        .map((d) => (
                         <tr key={d.id} className={`hover:bg-slate-50 ${d.montoDeuda < 0 ? 'bg-red-50' : ''}`}>
                           <td className="px-3 py-2 text-slate-600">{formatDate(d.fecha)}</td>
                           <td className="px-3 py-2 font-medium text-slate-800">{d.proveedor}</td>
