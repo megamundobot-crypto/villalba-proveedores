@@ -121,19 +121,37 @@ export default function CuentaProveedorPage({ params }: { params: Promise<{ id: 
     // Combinar movimientos
     const movs: Movimiento[] = []
 
-    // Agregar facturas como DEBE
+    // Agregar facturas como DEBE y Notas de Crédito como HABER
     if (facturas) {
       for (const f of facturas) {
-        movs.push({
-          fecha: f.fecha,
-          tipo: 'factura',
-          concepto: 'Factura',
-          comprobante: `FC ${f.numero}`,
-          debe: f.monto_total,
-          haber: 0,
-          empresa: f.empresa,
-          factura_id: f.id
-        })
+        // Si el monto es negativo, es una Nota de Crédito (va al HABER)
+        const esNotaCredito = f.monto_total < 0
+
+        if (esNotaCredito) {
+          // Nota de Crédito: va al HABER con monto positivo
+          movs.push({
+            fecha: f.fecha,
+            tipo: 'pago', // Lo tratamos como pago para el color verde
+            concepto: 'Nota de Crédito',
+            comprobante: `NC ${f.numero}`,
+            debe: 0,
+            haber: Math.abs(f.monto_total),
+            empresa: f.empresa,
+            factura_id: f.id
+          })
+        } else {
+          // Factura normal: va al DEBE
+          movs.push({
+            fecha: f.fecha,
+            tipo: 'factura',
+            concepto: 'Factura',
+            comprobante: `FC ${f.numero}`,
+            debe: f.monto_total,
+            haber: 0,
+            empresa: f.empresa,
+            factura_id: f.id
+          })
+        }
       }
     }
 
@@ -304,7 +322,7 @@ export default function CuentaProveedorPage({ params }: { params: Promise<{ id: 
                           <span className={`inline-flex items-center gap-1 ${
                             mov.tipo === 'factura' ? 'text-red-700' : 'text-green-700'
                           }`}>
-                            {mov.tipo === 'factura' ? '📄' : '💰'} {mov.concepto}
+                            {mov.tipo === 'factura' ? '📄' : mov.concepto === 'Nota de Crédito' ? '📋' : '💰'} {mov.concepto}
                           </span>
                         </td>
                         <td className="px-4 py-3 font-medium">{mov.comprobante}</td>
@@ -360,8 +378,8 @@ export default function CuentaProveedorPage({ params }: { params: Promise<{ id: 
           <div className="mt-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
             <p><strong>D</strong> = Deudor (le debemos al proveedor) | <strong>H</strong> = Acreedor (el proveedor nos debe)</p>
             <p className="mt-1">
-              <span className="inline-block w-3 h-3 bg-red-50 border border-red-200 mr-1"></span> Facturas (aumentan deuda)
-              <span className="inline-block w-3 h-3 bg-green-50 border border-green-200 ml-4 mr-1"></span> Pagos (disminuyen deuda)
+              <span className="inline-block w-3 h-3 bg-red-50 border border-red-200 mr-1"></span> 📄 Facturas (aumentan deuda - DEBE)
+              <span className="inline-block w-3 h-3 bg-green-50 border border-green-200 ml-4 mr-1"></span> 📋 Notas de Crédito / 💰 Pagos (disminuyen deuda - HABER)
             </p>
           </div>
         </div>
