@@ -152,11 +152,10 @@ export default function CuentaInternaPage() {
     }
 
     // Crear mapa de facturas pendientes (con saldo > 0) para verificar estado de pago al proveedor
-    // Una factura está "pagada al proveedor" si:
-    // 1. No existe en la tabla facturas, o
-    // 2. Tiene estado 'pagada' o 'anulada', o
-    // 3. Tiene saldo <= 0
+    // Usamos el NÚMERO de factura como clave para poder comparar con los datos del Excel
+    // que no tienen factura_id
     const facturasPendientesIds = new Set<number>()
+    const facturasPendientesNumeros = new Set<string>() // Números de FC pendientes
     if (facturasData) {
       facturasData.forEach((f: any) => {
         const pagado = pagosPorFactura[f.id] || 0
@@ -164,6 +163,10 @@ export default function CuentaInternaPage() {
         // Solo marcar como pendiente si tiene saldo y no está anulada/pagada
         if (saldo > 0 && f.estado !== 'pagada' && f.estado !== 'anulada') {
           facturasPendientesIds.add(f.id)
+          // Guardar el número de factura normalizado (sin espacios, mayúsculas)
+          if (f.numero) {
+            facturasPendientesNumeros.add(f.numero.toString().trim().toUpperCase())
+          }
         }
       })
     }
@@ -233,18 +236,25 @@ export default function CuentaInternaPage() {
         const neto = montoTotal / 1.21
         const facturaId = (row as any).factura_id
 
+        // Extraer solo el número de la factura (sin FC/NC) para comparar
+        const soloNumero = match ? match[2].trim().toUpperCase() : ''
+
         // Determinar si está pagado al proveedor:
-        // 1. Si tiene factura_id y NO está en facturasPendientesIds => pagado
-        // 2. Si tiene pagado_proveedor explícito en la BD => usar ese valor
-        // 3. Si no tiene factura_id => usar el campo pagado del Excel
+        // 1. Si tiene factura_id, verificar por ID
+        // 2. Si no tiene factura_id pero tiene número, buscar por número en facturas pendientes
+        // 3. Si el número NO está en facturas pendientes => ya fue pagada al proveedor
         let pagadoAlProveedor: boolean
         if (facturaId) {
           // Si tiene factura_id, verificar si la factura sigue pendiente
           pagadoAlProveedor = !facturasPendientesIds.has(facturaId)
-        } else if ((row as any).pagado_proveedor !== undefined) {
+        } else if (soloNumero) {
+          // Buscar por número de factura - si NO está en pendientes, está pagada
+          pagadoAlProveedor = !facturasPendientesNumeros.has(soloNumero)
+        } else if ((row as any).pagado_proveedor !== undefined && (row as any).pagado_proveedor !== null) {
           pagadoAlProveedor = (row as any).pagado_proveedor
         } else {
-          pagadoAlProveedor = row.pagado
+          // Por defecto, asumir pagado si no podemos verificar
+          pagadoAlProveedor = true
         }
 
         if (row.pagador === 'VH') {
