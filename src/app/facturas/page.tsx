@@ -399,7 +399,19 @@ export default function FacturasPage() {
   async function handleDelete(id: number) {
     const factura = facturas.find(f => f.id === id)
     if (confirm('¿Seguro que querés anular esta factura?')) {
+      // Anular la factura
       await supabase.from('facturas').update({ estado: 'anulada' }).eq('id', id)
+
+      // También eliminar el registro de cuenta_interna asociado (si existe)
+      const { error: errorCuentaInterna } = await supabase
+        .from('cuenta_interna')
+        .delete()
+        .eq('factura_id', id)
+
+      if (errorCuentaInterna) {
+        console.log('No había registro en cuenta_interna o error al eliminar:', errorCuentaInterna)
+      }
+
       await registrarAuditoria(
         'ANULAR_FACTURA',
         `Factura ${factura?.numero} de ${factura?.proveedor_nombre} anulada`,

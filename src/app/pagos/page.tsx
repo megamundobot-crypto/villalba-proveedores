@@ -652,7 +652,13 @@ function PagosContent() {
                                           <td className="px-4 py-2">
                                             <span className={`badge ${factura.empresa === 'VH' ? 'badge-vh' : 'badge-vc'}`}>{factura.empresa}</span>
                                           </td>
-                                          <td className="px-4 py-2 font-medium text-slate-800">{factura.numero}</td>
+                                          <td className="px-4 py-2 font-medium text-slate-800">
+                                            {factura.monto_total < 0 ? (
+                                              <span className="text-red-600">NC {factura.numero}</span>
+                                            ) : (
+                                              <>FC {factura.numero}</>
+                                            )}
+                                          </td>
                                           <td className="px-4 py-2 text-slate-600">{formatDate(factura.fecha)}</td>
                                           <td className="px-4 py-2 text-right font-bold text-slate-800 tabular-nums">{formatMoney(factura.saldo_pendiente)}</td>
                                           <td className="px-4 py-2 text-center">
@@ -731,7 +737,7 @@ function PagosContent() {
                               {pago.factura.cbu_principal && <BancoIcon cbu={pago.factura.cbu_principal} size="sm" />}
                               <div>
                                 <p className="font-semibold text-slate-800 text-sm">{pago.factura.proveedor_nombre}</p>
-                                <p className="text-xs text-slate-500">FC {pago.factura.numero}</p>
+                                <p className="text-xs text-slate-500">{pago.factura.monto_total < 0 ? 'NC' : 'FC'} {pago.factura.numero}</p>
                                 {pago.factura.cbu_principal && (
                                   <p className="text-xs text-slate-400">{getBancoFromCBU(pago.factura.cbu_principal)?.nombreCorto || 'Banco'}</p>
                                 )}

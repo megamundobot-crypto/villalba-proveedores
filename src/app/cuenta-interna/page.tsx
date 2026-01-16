@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, ArrowRightLeft, Building2, FileText, Download, Check, Calendar, DollarSign, Receipt, History, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { ArrowLeft, ArrowRightLeft, Building2, FileText, Download, Check, Calendar, DollarSign, Receipt, History, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import NavRapida from '@/components/NavRapida'
 import Buscador from '@/components/Buscador'
@@ -79,8 +79,8 @@ export default function CuentaInternaPage() {
   const [sortField, setSortField] = useState<SortField>('total_general')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
-  // Tabs
-  const [activeTab, setActiveTab] = useState<'resumen' | 'deuda_vh_vc' | 'deuda_vc_vh' | 'historial'>('resumen')
+  // Tabs - Eliminado 'resumen' porque no tiene sentido en cuenta interna
+  const [activeTab, setActiveTab] = useState<'deuda_vh_vc' | 'deuda_vc_vh' | 'historial'>('deuda_vh_vc')
 
   // Buscador
   const [busqueda, setBusqueda] = useState('')
@@ -422,6 +422,22 @@ export default function CuentaInternaPage() {
     }
   }
 
+  // Función para eliminar registro de cuenta_interna
+  async function eliminarRegistroCuentaInterna(id: number, descripcion: string) {
+    if (confirm(`¿Seguro que querés eliminar este registro?\n\n${descripcion}\n\nEsta acción no se puede deshacer.`)) {
+      const { error } = await supabase
+        .from('cuenta_interna')
+        .delete()
+        .eq('id', id)
+
+      if (error) {
+        alert('Error al eliminar: ' + error.message)
+      } else {
+        loadData()
+      }
+    }
+  }
+
   // Función para agregar FC o NC a la cuenta interna
   async function guardarDocumento() {
     if (!documentoForm.nroDocumento || !documentoForm.proveedor || documentoForm.monto <= 0) {
@@ -645,16 +661,6 @@ export default function CuentaInternaPage() {
         <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
           <div className="flex border-b border-slate-200 overflow-x-auto">
             <button
-              onClick={() => setActiveTab('resumen')}
-              className={`px-6 py-4 font-medium text-sm whitespace-nowrap transition-colors ${
-                activeTab === 'resumen'
-                  ? 'text-purple-700 border-b-2 border-purple-600 bg-purple-50'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              Resumen por Proveedor
-            </button>
-            <button
               onClick={() => setActiveTab('deuda_vh_vc')}
               className={`px-6 py-4 font-medium text-sm whitespace-nowrap transition-colors ${
                 activeTab === 'deuda_vh_vc'
@@ -784,6 +790,7 @@ export default function CuentaInternaPage() {
                         <th className="px-3 py-2 text-right font-semibold text-slate-600">%</th>
                         <th className="px-3 py-2 text-right font-semibold text-blue-700">Monto</th>
                         <th className="px-3 py-2 text-center font-semibold text-slate-600">Pagado Prov</th>
+                        <th className="px-3 py-2 text-center font-semibold text-slate-600 w-10"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -812,6 +819,15 @@ export default function CuentaInternaPage() {
                               {d.pagado_proveedor ? <><Check className="h-3 w-3 mr-1" /> Pagado</> : 'Pendiente'}
                             </button>
                           </td>
+                          <td className="px-3 py-2 text-center">
+                            <button
+                              onClick={() => eliminarRegistroCuentaInterna(d.id, `${d.nroFactura} - ${d.proveedor}`)}
+                              className="p-1 text-red-500 hover:bg-red-100 rounded-lg transition-colors"
+                              title="Eliminar registro"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -819,7 +835,7 @@ export default function CuentaInternaPage() {
                       <tr className="bg-blue-100 font-bold">
                         <td colSpan={4} className="px-3 py-2 text-slate-800">TOTAL PENDIENTE</td>
                         <td className="px-3 py-2 text-right text-blue-800">{formatMoney(totalesCuentaInterna.pendienteVHaVC)}</td>
-                        <td></td>
+                        <td colSpan={2}></td>
                       </tr>
                     </tfoot>
                   </table>
@@ -846,6 +862,7 @@ export default function CuentaInternaPage() {
                         <th className="px-3 py-2 text-right font-semibold text-slate-600">%</th>
                         <th className="px-3 py-2 text-right font-semibold text-emerald-700">Monto</th>
                         <th className="px-3 py-2 text-center font-semibold text-slate-600">Pagado Prov</th>
+                        <th className="px-3 py-2 text-center font-semibold text-slate-600 w-10"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -874,6 +891,15 @@ export default function CuentaInternaPage() {
                               {d.pagado_proveedor ? <><Check className="h-3 w-3 mr-1" /> Pagado</> : 'Pendiente'}
                             </button>
                           </td>
+                          <td className="px-3 py-2 text-center">
+                            <button
+                              onClick={() => eliminarRegistroCuentaInterna(d.id, `${d.nroFactura} - ${d.proveedor}`)}
+                              className="p-1 text-red-500 hover:bg-red-100 rounded-lg transition-colors"
+                              title="Eliminar registro"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -881,7 +907,7 @@ export default function CuentaInternaPage() {
                       <tr className="bg-emerald-100 font-bold">
                         <td colSpan={4} className="px-3 py-2 text-slate-800">TOTAL PENDIENTE</td>
                         <td className="px-3 py-2 text-right text-emerald-800">{formatMoney(totalesCuentaInterna.pendienteVCaVH)}</td>
-                        <td></td>
+                        <td colSpan={2}></td>
                       </tr>
                     </tfoot>
                   </table>
