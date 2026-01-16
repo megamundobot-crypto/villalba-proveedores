@@ -162,29 +162,44 @@ export default function Dashboard() {
   const facturasSeleccionadasData = todasLasFacturas.filter(f => facturasSeleccionadas.includes(f.id))
 
   // Calcular deuda real según regla 65/35
-  // VH paga: 100% de FC de VH + 65% del neto de FC de VC
-  // VC paga: 100% de FC de VC + 35% del neto de FC de VH
+  // El cálculo se hace sobre el monto ORIGINAL (monto_total), no sobre el saldo
+  // Los pagos realizados se restan solo al que paga al proveedor
+  //
+  // FC de VH (VH paga al proveedor):
+  //   - VH debe: 65% neto + IVA - pagos realizados
+  //   - VC debe: 35% neto (deuda interna, no paga al proveedor)
+  //
+  // FC de VC (VC paga al proveedor):
+  //   - VC debe: 35% neto + IVA - pagos realizados
+  //   - VH debe: 65% neto (deuda interna, no paga al proveedor)
+
   const deudaRealVH = facturasSeleccionadasData.reduce((sum, f) => {
-    const saldoNeto = f.saldo_pendiente / 1.21
-    const saldoIva = f.saldo_pendiente - saldoNeto
+    const montoNeto = f.monto_total / 1.21
+    const montoIva = f.monto_total - montoNeto
+    const pagosRealizados = f.total_pagado || 0
+
     if (f.empresa === 'VH') {
-      // FC de VH: VH paga 65% neto + 100% IVA
-      return sum + (saldoNeto * 0.65) + saldoIva
+      // FC de VH: VH paga al proveedor (65% neto + IVA - pagos)
+      const deudaVH = (montoNeto * 0.65) + montoIva - pagosRealizados
+      return sum + Math.max(0, deudaVH)
     } else {
-      // FC de VC: VH paga 65% neto
-      return sum + (saldoNeto * 0.65)
+      // FC de VC: VH debe 65% neto a VC (deuda interna, sin descontar pagos de VC)
+      return sum + (montoNeto * 0.65)
     }
   }, 0)
 
   const deudaRealVC = facturasSeleccionadasData.reduce((sum, f) => {
-    const saldoNeto = f.saldo_pendiente / 1.21
-    const saldoIva = f.saldo_pendiente - saldoNeto
+    const montoNeto = f.monto_total / 1.21
+    const montoIva = f.monto_total - montoNeto
+    const pagosRealizados = f.total_pagado || 0
+
     if (f.empresa === 'VC') {
-      // FC de VC: VC paga 35% neto + 100% IVA
-      return sum + (saldoNeto * 0.35) + saldoIva
+      // FC de VC: VC paga al proveedor (35% neto + IVA - pagos)
+      const deudaVC = (montoNeto * 0.35) + montoIva - pagosRealizados
+      return sum + Math.max(0, deudaVC)
     } else {
-      // FC de VH: VC paga 35% neto
-      return sum + (saldoNeto * 0.35)
+      // FC de VH: VC debe 35% neto a VH (deuda interna, sin descontar pagos de VH)
+      return sum + (montoNeto * 0.35)
     }
   }, 0)
 
