@@ -329,6 +329,55 @@ export default function FacturasPage() {
         `Nueva ${tipoDoc} ${formData.numero} de ${proveedorNombre} por $${Math.abs(parseFloat(formData.monto_total)).toLocaleString('es-AR')}`,
         { factura_id: nuevaFactura?.id, numero: formData.numero, proveedor: proveedorNombre, empresa: formData.empresa, monto: montoTotal, tipo: formData.tipo_documento }
       )
+
+      // Si aplica regla 65/35, crear registro en cuenta_interna
+      if (formData.aplica_65_35 && nuevaFactura) {
+        // Calcular el monto neto (sin IVA)
+        const montoNetoAbs = Math.abs(montoTotal) / 1.21
+
+        // Determinar quién debe a quién según la empresa de la factura
+        // Si FC de VH: VC debe a VH el 35%
+        // Si FC de VC: VH debe a VC el 65%
+        // Para NC se invierte (resta de la deuda)
+        const esNC = formData.tipo_documento === 'NC'
+
+        let pagador: 'VH' | 'VC'
+        let receptor: 'VH' | 'VC'
+        let porcentaje: number
+
+        if (formData.empresa === 'VH') {
+          // Factura de VH: VC debe a VH el 35%
+          pagador = 'VC'
+          receptor = 'VH'
+          porcentaje = 0.35
+        } else {
+          // Factura de VC: VH debe a VC el 65%
+          pagador = 'VH'
+          receptor = 'VC'
+          porcentaje = 0.65
+        }
+
+        const montoDeuda = montoNetoAbs * porcentaje
+        // Para NC el monto es negativo (resta de la deuda)
+        const montoFinal = esNC ? -montoDeuda : montoDeuda
+
+        const tipoDocCuenta = esNC ? 'NC' : 'FC'
+        const observacionesCuenta = `${tipoDocCuenta} ${formData.numero} - ${proveedorNombre.toUpperCase()}`
+
+        await supabase.from('cuenta_interna').insert({
+          tipo: 'deuda_historica',
+          debe_vh: pagador === 'VH' ? montoFinal : 0,
+          debe_vc: pagador === 'VC' ? montoFinal : 0,
+          pagador,
+          receptor,
+          monto: montoFinal,
+          fecha: formData.fecha,
+          observaciones: observacionesCuenta,
+          pagado: false,
+          pagado_proveedor: false,
+          factura_id: nuevaFactura.id
+        })
+      }
     }
 
     setShowModal(false)
