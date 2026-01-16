@@ -364,7 +364,7 @@ export default function FacturasPage() {
         const tipoDocCuenta = esNC ? 'NC' : 'FC'
         const observacionesCuenta = `${tipoDocCuenta} ${formData.numero} - ${proveedorNombre.toUpperCase()}`
 
-        await supabase.from('cuenta_interna').insert({
+        const { error: errorCuentaInterna } = await supabase.from('cuenta_interna').insert({
           tipo: 'deuda_historica',
           debe_vh: pagador === 'VH' ? montoFinal : 0,
           debe_vc: pagador === 'VC' ? montoFinal : 0,
@@ -377,6 +377,18 @@ export default function FacturasPage() {
           pagado_proveedor: false,
           factura_id: nuevaFactura.id
         })
+
+        if (errorCuentaInterna) {
+          console.error('Error creando deuda interna:', errorCuentaInterna)
+          alert(`⚠️ La factura se guardó pero hubo un error creando la deuda interna:\n${errorCuentaInterna.message}`)
+        } else {
+          console.log('Deuda interna creada:', {
+            pagador,
+            receptor,
+            monto: montoFinal,
+            observaciones: observacionesCuenta
+          })
+        }
       }
     }
 
