@@ -50,6 +50,8 @@ interface PagoInterno {
   pagador: 'VH' | 'VC'
   receptor: 'VH' | 'VC'
   monto: number
+  monto_aplicado: number
+  saldo_a_favor: number
   observaciones?: string
 }
 
@@ -272,15 +274,6 @@ export default function CuentaInternaPage() {
       return
     }
 
-    const deudaTotal = pagoForm.pagador === 'VH'
-      ? totalesCuentaInterna.pendienteVHaVC
-      : totalesCuentaInterna.pendienteVCaVH
-
-    if (pagoForm.monto > deudaTotal) {
-      alert(`El monto ingresado ($${pagoForm.monto.toLocaleString('es-AR')}) supera la deuda total ($${deudaTotal.toLocaleString('es-AR')}).\n\nAjustá el monto para continuar.`)
-      return
-    }
-
     setProcesandoPago(true)
     const receptor = pagoForm.pagador === 'VH' ? 'VC' : 'VH'
 
@@ -302,11 +295,9 @@ export default function CuentaInternaPage() {
       montoRestante -= montoAAplicar
     }
 
-    if (facturasAPagar.length === 0) {
-      alert('No hay facturas pendientes para pagar')
-      setProcesandoPago(false)
-      return
-    }
+    // Calcular monto aplicado y saldo a favor
+    const montoAplicado = pagoForm.monto - montoRestante
+    const saldoAFavor = montoRestante
 
     try {
       // 1. Crear el registro del pago interno
@@ -315,7 +306,9 @@ export default function CuentaInternaPage() {
         .insert({
           pagador: pagoForm.pagador,
           receptor,
-          monto: pagoForm.monto - montoRestante, // Monto efectivamente aplicado
+          monto: pagoForm.monto,
+          monto_aplicado: montoAplicado,
+          saldo_a_favor: saldoAFavor,
           observaciones: pagoForm.observaciones || `Pago de ${pagoForm.pagador} a ${receptor}`
         })
         .select()
@@ -349,7 +342,13 @@ export default function CuentaInternaPage() {
         return deuda && f.monto >= deuda.montoDeuda
       }).length
 
-      alert(`✅ Pago registrado exitosamente\n\nMonto: $${pagoForm.monto.toLocaleString('es-AR')}\nFacturas saldadas completamente: ${fcCompletas}\nFacturas afectadas: ${facturasAPagar.length}`)
+      let mensaje = `✅ Pago registrado exitosamente\n\nMonto total: $${pagoForm.monto.toLocaleString('es-AR')}\nMonto aplicado: $${montoAplicado.toLocaleString('es-AR')}\nFacturas saldadas: ${fcCompletas}`
+
+      if (saldoAFavor > 0) {
+        mensaje += `\n\n💰 Saldo a favor: $${saldoAFavor.toLocaleString('es-AR')}\n(Quedará registrado para aplicar a futuras facturas)`
+      }
+
+      alert(mensaje)
 
       // Resetear y recargar
       setShowModalPago(false)
@@ -761,6 +760,29 @@ export default function CuentaInternaPage() {
                   </p>
                 </div>
 
+                {/* Mostrar saldos a favor pendientes */}
+                {pagosInternos.some(p => p.saldo_a_favor > 0) && (
+                  <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-xl">
+                    <h4 className="font-semibold text-purple-800 mb-2">💰 Saldos a Favor Pendientes</h4>
+                    <div className="space-y-2">
+                      {pagosInternos.filter(p => p.saldo_a_favor > 0).map(p => (
+                        <div key={p.id} className="flex justify-between items-center text-sm">
+                          <span className="text-slate-600">
+                            {formatDate(p.fecha)} - {p.pagador} pagó a {p.receptor}
+                          </span>
+                          <span className="font-bold text-purple-700">{formatMoney(p.saldo_a_favor)}</span>
+                        </div>
+                      ))}
+                      <div className="border-t border-purple-200 pt-2 mt-2 flex justify-between items-center">
+                        <span className="font-semibold text-purple-800">Total saldo a favor:</span>
+                        <span className="font-bold text-purple-800 text-lg">
+                          {formatMoney(pagosInternos.reduce((acc, p) => acc + (p.saldo_a_favor || 0), 0))}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {pagosInternos.length === 0 ? (
                   <div className="text-center py-12 text-slate-500">
                     <Receipt className="h-12 w-12 mx-auto mb-3 text-slate-300" />
@@ -775,7 +797,9 @@ export default function CuentaInternaPage() {
                           <th className="px-3 py-2 text-left font-semibold text-slate-600">Pagador</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-600">Receptor</th>
                           <th className="px-3 py-2 text-right font-semibold text-amber-700">Monto</th>
-                          <th className="px-3 py-2 text-left font-semibold text-slate-600">Observaciones</th>
+                          <th className="px-3 py-2 text-right font-semibold text-emerald-700">Aplicado</th>
+                          <th className="px-3 py-2 text-right font-semibold text-purple-700">Saldo</th>
+                          <th className="px-3 py-2 text-left font-semibold text-slate-600">Obs</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -797,7 +821,15 @@ export default function CuentaInternaPage() {
                               </span>
                             </td>
                             <td className="px-3 py-2 text-right font-semibold text-amber-700">{formatMoney(p.monto)}</td>
-                            <td className="px-3 py-2 text-slate-600">{p.observaciones || '-'}</td>
+                            <td className="px-3 py-2 text-right text-emerald-600">{formatMoney(p.monto_aplicado || p.monto)}</td>
+                            <td className="px-3 py-2 text-right">
+                              {p.saldo_a_favor > 0 ? (
+                                <span className="text-purple-700 font-semibold">{formatMoney(p.saldo_a_favor)}</span>
+                              ) : (
+                                <span className="text-slate-400">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-slate-600 text-xs">{p.observaciones || '-'}</td>
                           </tr>
                         ))}
                       </tbody>

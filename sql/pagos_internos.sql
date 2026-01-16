@@ -19,10 +19,16 @@ CREATE TABLE IF NOT EXISTS pagos_internos (
   pagador VARCHAR(2) NOT NULL CHECK (pagador IN ('VH', 'VC')),
   receptor VARCHAR(2) NOT NULL CHECK (receptor IN ('VH', 'VC')),
   monto DECIMAL(15,2) NOT NULL,
+  monto_aplicado DECIMAL(15,2) DEFAULT 0,
+  saldo_a_favor DECIMAL(15,2) DEFAULT 0,
   observaciones TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   created_by INTEGER REFERENCES usuarios(id)
 );
+
+-- Si la tabla ya existe, agregar las columnas nuevas
+ALTER TABLE pagos_internos ADD COLUMN IF NOT EXISTS monto_aplicado DECIMAL(15,2) DEFAULT 0;
+ALTER TABLE pagos_internos ADD COLUMN IF NOT EXISTS saldo_a_favor DECIMAL(15,2) DEFAULT 0;
 
 -- 4. Crear tabla para el detalle de qué facturas se pagaron con cada pago interno
 CREATE TABLE IF NOT EXISTS pagos_internos_detalle (
