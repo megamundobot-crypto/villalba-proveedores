@@ -456,12 +456,13 @@ export default function Dashboard() {
           )}
 
           {/* Quick Nav */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
             {[
               { href: '/proveedores', icon: Icons.users, label: 'Proveedores', bg: 'bg-blue-100', color: 'text-blue-600' },
               { href: '/facturas', icon: Icons.document, label: 'Facturas', bg: 'bg-emerald-100', color: 'text-emerald-600' },
               { href: '/pagos', icon: Icons.creditCard, label: 'Pagos', bg: 'bg-violet-100', color: 'text-violet-600' },
               { href: '/cuenta-interna', icon: Icons.exchange, label: 'Cuenta Interna', bg: 'bg-purple-100', color: 'text-purple-600' },
+              { href: '/saldos-bancarios', icon: Icons.building, label: 'Bancos', bg: 'bg-indigo-100', color: 'text-indigo-600' },
               { href: '/generar-txt', icon: Icons.download, label: 'Generar TXT', bg: 'bg-amber-100', color: 'text-amber-600' },
             ].map((item, idx) => (
               <Link key={item.href} href={item.href} className="card-interactive p-5 group animate-fadeIn" style={{animationDelay: `${0.25 + idx * 0.05}s`}}>

@@ -142,11 +142,36 @@ export default function SaldosBancariosPage() {
     }
   }
 
+  // Función para cargar una imagen
+  function loadImage(src: string): Promise<HTMLImageElement | null> {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => resolve(img)
+      img.onerror = () => resolve(null)
+      img.src = src
+    })
+  }
+
   // Generar imagen PNG usando Canvas nativo (sin html2canvas)
   async function descargarImagen() {
     setDescargando(true)
 
     try {
+      // Precargar todos los íconos de bancos
+      const iconosPromises: Record<number, Promise<HTMLImageElement | null>> = {}
+      cuentas.forEach(cuenta => {
+        if (cuenta.icono) {
+          iconosPromises[cuenta.id] = loadImage(`/bancos/${cuenta.icono}`)
+        }
+      })
+
+      // Esperar a que se carguen todos los íconos
+      const iconosLoaded: Record<number, HTMLImageElement | null> = {}
+      for (const [id, promise] of Object.entries(iconosPromises)) {
+        iconosLoaded[Number(id)] = await promise
+      }
+
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')!
 
@@ -155,6 +180,7 @@ export default function SaldosBancariosPage() {
       const padding = 20
       const rowHeight = 36
       const headerHeight = 60
+      const iconSize = 20
 
       // Calcular altura total
       let totalRows = 0
@@ -220,10 +246,33 @@ export default function SaldosBancariosPage() {
           ctx.fillStyle = idx % 2 === 0 ? '#ffffff' : '#f8fafc'
           ctx.fillRect(padding - 5, y - 2, width - padding * 2 + 10, rowHeight - 4)
 
-          // Nombre del banco
+          // Ícono del banco
+          const icono = iconosLoaded[cuenta.id]
+          const iconX = padding
+          const iconY = y + 2
+
+          if (icono) {
+            // Dibujar ícono cargado
+            ctx.drawImage(icono, iconX, iconY, iconSize, iconSize)
+          } else {
+            // Dibujar cuadrado de fallback
+            ctx.fillStyle = esUSD ? '#059669' : '#4f46e5'
+            ctx.beginPath()
+            ctx.roundRect(iconX, iconY, iconSize, iconSize, 4)
+            ctx.fill()
+
+            // Ícono de banco simple (letra B)
+            ctx.fillStyle = '#ffffff'
+            ctx.font = 'bold 12px system-ui, -apple-system, sans-serif'
+            ctx.textAlign = 'center'
+            ctx.fillText('$', iconX + iconSize / 2, iconY + 15)
+            ctx.textAlign = 'left'
+          }
+
+          // Nombre del banco (desplazado para dejar espacio al ícono)
           ctx.fillStyle = '#1e293b'
           ctx.font = '13px system-ui, -apple-system, sans-serif'
-          ctx.fillText(cuenta.banco, padding, y + 16)
+          ctx.fillText(cuenta.banco, padding + iconSize + 8, y + 16)
 
           // Monto
           const monto = saldos[cuenta.id] || '0,00'
