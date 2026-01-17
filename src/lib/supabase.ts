@@ -106,14 +106,19 @@ export async function registrarAuditoria(
     const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null
     const user = userStr ? JSON.parse(userStr) : null
 
-    await supabase.from('auditoria').insert({
+    const { error } = await supabase.from('auditoria').insert({
       accion,
-      descripcion,
-      detalles: detalles ? JSON.stringify(detalles) : null,
       usuario_id: user?.id || null,
       usuario_nombre: user?.nombre || 'Sistema',
-      ip: null // No podemos obtener IP del cliente fácilmente
+      tabla_afectada: detalles?.tabla || null,
+      registro_id: detalles?.registro_id || null,
+      datos_nuevos: { descripcion, ...detalles },
+      ip_address: null
     })
+
+    if (error) {
+      console.error('Error en auditoría:', error)
+    }
   } catch (error) {
     console.error('Error registrando auditoría:', error)
   }

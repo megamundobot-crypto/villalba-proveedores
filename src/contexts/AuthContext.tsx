@@ -33,11 +33,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (response.ok) {
         const data = await response.json()
         setUser(data.user)
+        // Guardar en localStorage para auditoría
+        localStorage.setItem('user', JSON.stringify(data.user))
       } else {
         setUser(null)
+        localStorage.removeItem('user')
       }
     } catch {
       setUser(null)
+      localStorage.removeItem('user')
     } finally {
       setLoading(false)
     }
@@ -59,6 +63,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (response.ok) {
         setUser(data.user)
+        // Guardar en localStorage para auditoría
+        localStorage.setItem('user', JSON.stringify(data.user))
         return { success: true }
       } else {
         return { success: false, error: data.error }
@@ -75,6 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Ignorar errores en logout
     }
     setUser(null)
+    localStorage.removeItem('user')
     router.push('/login')
   }
 
