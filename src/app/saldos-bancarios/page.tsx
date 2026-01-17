@@ -37,6 +37,8 @@ export default function SaldosBancariosPage() {
   const [guardadoOk, setGuardadoOk] = useState(false)
   const [mostrarConfig, setMostrarConfig] = useState(false)
   const [copiando, setCopiando] = useState(false)
+  const [copiado, setCopiado] = useState(false)
+  const [descargando, setDescargando] = useState(false)
 
   // Para agregar nueva cuenta
   const [nuevaCuenta, setNuevaCuenta] = useState({
@@ -142,7 +144,8 @@ export default function SaldosBancariosPage() {
     }
   }
 
-  async function descargarImagen() {
+  // Copiar imagen al portapapeles (para WhatsApp)
+  async function copiarImagen() {
     if (!reporteRef.current) return
 
     setCopiando(true)
@@ -153,28 +156,77 @@ export default function SaldosBancariosPage() {
         scale: 2
       })
 
-      // Intentar copiar al portapapeles primero
-      try {
-        const blob = await new Promise<Blob>((resolve) => {
-          canvas.toBlob((b) => resolve(b!), 'image/png')
-        })
+      const blob = await new Promise<Blob>((resolve) => {
+        canvas.toBlob((b) => resolve(b!), 'image/png')
+      })
 
-        await navigator.clipboard.write([
-          new ClipboardItem({ 'image/png': blob })
-        ])
-      } catch {
-        // Si falla copiar, descargar
-        const link = document.createElement('a')
-        const fecha = new Date().toLocaleDateString('es-AR').replace(/\//g, '-')
-        link.download = `saldos-bancarios-${fecha}.png`
-        link.href = canvas.toDataURL('image/png')
-        link.click()
-      }
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob })
+      ])
+
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2000)
     } catch (error) {
-      console.error('Error:', error)
+      console.error('Error copiando:', error)
+      alert('No se pudo copiar. Probá con "Guardar PNG" para descargar el archivo.')
     }
 
     setCopiando(false)
+  }
+
+  // Guardar imagen como archivo (abre diálogo para elegir ubicación)
+  async function guardarImagen() {
+    if (!reporteRef.current) return
+
+    setDescargando(true)
+
+    try {
+      const canvas = await html2canvas(reporteRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2
+      })
+
+      const blob = await new Promise<Blob>((resolve) => {
+        canvas.toBlob((b) => resolve(b!), 'image/png')
+      })
+
+      const fecha = new Date().toLocaleDateString('es-AR').replace(/\//g, '-')
+      const nombreArchivo = `saldos-bancarios-${fecha}.png`
+
+      // Intentar usar File System Access API (permite elegir ubicación)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: nombreArchivo,
+            types: [{
+              description: 'Imagen PNG',
+              accept: { 'image/png': ['.png'] }
+            }]
+          })
+          const writable = await handle.createWritable()
+          await writable.write(blob)
+          await writable.close()
+        } catch (err: any) {
+          // Usuario canceló el diálogo
+          if (err.name !== 'AbortError') {
+            throw err
+          }
+        }
+      } else {
+        // Fallback para navegadores sin File System Access API
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = nombreArchivo
+        link.click()
+        URL.revokeObjectURL(url)
+      }
+    } catch (error) {
+      console.error('Error guardando:', error)
+      alert('Error al guardar la imagen')
+    }
+
+    setDescargando(false)
   }
 
   // Parsear número desde formato argentino
@@ -311,18 +363,43 @@ export default function SaldosBancariosPage() {
       <main className="container mx-auto px-6 py-6">
         {/* Botones de acción */}
         <div className="flex flex-wrap items-center justify-end gap-3 mb-6">
+          {/* Copiar al portapapeles (para WhatsApp) */}
           <button
-            onClick={descargarImagen}
+            onClick={copiarImagen}
             disabled={copiando}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 ${
+              copiado
+                ? 'bg-emerald-600 text-white'
+                : 'bg-slate-600 hover:bg-slate-700 text-white'
+            }`}
+            title="Copiar imagen para pegar en WhatsApp"
           >
             {copiando ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : copiado ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+            {copiado ? '¡Copiado!' : 'Copiar'}
+          </button>
+
+          {/* Guardar como archivo PNG */}
+          <button
+            onClick={guardarImagen}
+            disabled={descargando}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+            title="Guardar imagen en tu computadora"
+          >
+            {descargando ? (
               <RefreshCw className="h-4 w-4 animate-spin" />
             ) : (
               <Download className="h-4 w-4" />
             )}
-            Descargar PNG
+            Guardar PNG
           </button>
+
+          {/* Guardar saldos en la base de datos */}
           <button
             onClick={guardarSaldos}
             disabled={guardando}
@@ -331,6 +408,7 @@ export default function SaldosBancariosPage() {
                 ? 'bg-emerald-600 text-white'
                 : 'bg-indigo-600 hover:bg-indigo-700 text-white'
             }`}
+            title="Guardar los saldos en el sistema"
           >
             {guardando ? (
               <RefreshCw className="h-4 w-4 animate-spin" />
@@ -339,7 +417,7 @@ export default function SaldosBancariosPage() {
             ) : (
               <Save className="h-4 w-4" />
             )}
-            {guardadoOk ? 'Guardado!' : 'Guardar'}
+            {guardadoOk ? '¡Guardado!' : 'Guardar Saldos'}
           </button>
         </div>
 
