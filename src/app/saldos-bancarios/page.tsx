@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   ArrowLeft, Building2, Save, RefreshCw, Plus, Trash2,
-  Settings, Copy, Landmark, Check
+  Settings, Copy, Landmark, Check, Download
 } from 'lucide-react'
 import Link from 'next/link'
 import NavRapida from '@/components/NavRapida'
@@ -17,6 +17,7 @@ interface CuentaBancaria {
   icono?: string
   orden: number
   activa: boolean
+  moneda?: 'ARS' | 'USD'
 }
 
 // Configuración de empresas con colores
@@ -29,19 +30,20 @@ const EMPRESAS_CONFIG = {
 
 export default function SaldosBancariosPage() {
   const [cuentas, setCuentas] = useState<CuentaBancaria[]>([])
-  const [saldos, setSaldos] = useState<Record<number, string>>({}) // Guardamos como string para evitar problemas de input
-  const [saldoUSD, setSaldoUSD] = useState<string>('') // Saldo en USD para Cricnogap
+  const [saldos, setSaldos] = useState<Record<number, string>>({})
+  const [saldosEditando, setSaldosEditando] = useState<Record<number, boolean>>({}) // Track which inputs are being edited
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState(false)
+  const [guardadoOk, setGuardadoOk] = useState(false)
   const [mostrarConfig, setMostrarConfig] = useState(false)
-  const [ultimaActualizacion, setUltimaActualizacion] = useState<Date | null>(null)
-  const [copiado, setCopiado] = useState(false)
+  const [copiando, setCopiando] = useState(false)
 
   // Para agregar nueva cuenta
   const [nuevaCuenta, setNuevaCuenta] = useState({
     banco: '',
     empresa: 'VH' as 'VH' | 'VC' | 'MEGA' | 'CRICNOGAP',
-    icono: ''
+    icono: '',
+    moneda: 'ARS' as 'ARS' | 'USD'
   })
 
   const reporteRef = useRef<HTMLDivElement>(null)
@@ -53,7 +55,6 @@ export default function SaldosBancariosPage() {
   async function loadData() {
     setLoading(true)
 
-    // Cargar cuentas bancarias
     const { data: cuentasData } = await supabase
       .from('cuentas_bancarias')
       .select('*')
@@ -64,24 +65,12 @@ export default function SaldosBancariosPage() {
     if (cuentasData) {
       setCuentas(cuentasData)
 
-      // Cargar saldos actuales como strings
       const saldosMap: Record<number, string> = {}
       cuentasData.forEach((c: any) => {
         const saldo = c.saldo_actual || 0
-        saldosMap[c.id] = saldo > 0 ? saldo.toString() : ''
+        saldosMap[c.id] = saldo > 0 ? formatNumberForDisplay(saldo) : ''
       })
       setSaldos(saldosMap)
-    }
-
-    // Cargar saldo USD de configuración
-    const { data: configUSD } = await supabase
-      .from('configuracion')
-      .select('valor')
-      .eq('clave', 'cricnogap_usd')
-      .single()
-
-    if (configUSD) {
-      setSaldoUSD(configUSD.valor || '')
     }
 
     setLoading(false)
@@ -91,27 +80,18 @@ export default function SaldosBancariosPage() {
     setGuardando(true)
 
     try {
-      // Actualizar saldo_actual en cada cuenta
       for (const [cuentaId, saldoStr] of Object.entries(saldos)) {
-        const saldo = parseFloat(saldoStr.replace(/\./g, '').replace(',', '.')) || 0
+        const saldo = parseNumber(saldoStr)
         await supabase
           .from('cuentas_bancarias')
           .update({ saldo_actual: saldo, updated_at: new Date().toISOString() })
           .eq('id', Number(cuentaId))
       }
 
-      // Guardar saldo USD
-      if (saldoUSD) {
-        await supabase
-          .from('configuracion')
-          .upsert({ clave: 'cricnogap_usd', valor: saldoUSD })
-      }
-
-      setUltimaActualizacion(new Date())
-      alert('✅ Saldos guardados correctamente')
+      setGuardadoOk(true)
+      setTimeout(() => setGuardadoOk(false), 2000)
     } catch (error) {
       console.error('Error guardando saldos:', error)
-      alert('Error al guardar los saldos')
     }
 
     setGuardando(false)
@@ -134,16 +114,16 @@ export default function SaldosBancariosPage() {
           icono: nuevaCuenta.icono || null,
           orden: maxOrden + 1,
           activa: true,
-          saldo_actual: 0
+          saldo_actual: 0,
+          moneda: nuevaCuenta.moneda
         })
 
       if (error) throw error
 
-      setNuevaCuenta({ banco: '', empresa: 'VH', icono: '' })
+      setNuevaCuenta({ banco: '', empresa: 'VH', icono: '', moneda: 'ARS' })
       loadData()
     } catch (error) {
       console.error('Error agregando cuenta:', error)
-      alert('Error al agregar la cuenta')
     }
   }
 
@@ -162,8 +142,10 @@ export default function SaldosBancariosPage() {
     }
   }
 
-  async function copiarAlPortapapeles() {
+  async function descargarImagen() {
     if (!reporteRef.current) return
+
+    setCopiando(true)
 
     try {
       const canvas = await html2canvas(reporteRef.current, {
@@ -171,29 +153,41 @@ export default function SaldosBancariosPage() {
         scale: 2
       })
 
-      canvas.toBlob(async (blob) => {
-        if (blob) {
-          try {
-            await navigator.clipboard.write([
-              new ClipboardItem({ 'image/png': blob })
-            ])
-            setCopiado(true)
-            setTimeout(() => setCopiado(false), 2000)
-          } catch (err) {
-            // Fallback: descargar si no se puede copiar
-            const link = document.createElement('a')
-            const fecha = new Date().toLocaleDateString('es-AR').replace(/\//g, '-')
-            link.download = `saldos-bancarios-${fecha}.png`
-            link.href = canvas.toDataURL('image/png')
-            link.click()
-            alert('No se pudo copiar al portapapeles. Se descargó la imagen.')
-          }
-        }
-      }, 'image/png')
+      // Intentar copiar al portapapeles primero
+      try {
+        const blob = await new Promise<Blob>((resolve) => {
+          canvas.toBlob((b) => resolve(b!), 'image/png')
+        })
+
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': blob })
+        ])
+      } catch {
+        // Si falla copiar, descargar
+        const link = document.createElement('a')
+        const fecha = new Date().toLocaleDateString('es-AR').replace(/\//g, '-')
+        link.download = `saldos-bancarios-${fecha}.png`
+        link.href = canvas.toDataURL('image/png')
+        link.click()
+      }
     } catch (error) {
-      console.error('Error copiando imagen:', error)
-      alert('Error al copiar la imagen')
+      console.error('Error:', error)
     }
+
+    setCopiando(false)
+  }
+
+  // Parsear número desde formato argentino
+  function parseNumber(str: string): number {
+    if (!str) return 0
+    // Remover puntos de miles, reemplazar coma decimal por punto
+    return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0
+  }
+
+  // Formatear número para mostrar (formato argentino)
+  function formatNumberForDisplay(num: number): string {
+    if (!num) return ''
+    return num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 
   function handleSaldoChange(cuentaId: number, valor: string) {
@@ -205,38 +199,55 @@ export default function SaldosBancariosPage() {
     }))
   }
 
-  function parseSaldo(saldoStr: string): number {
-    if (!saldoStr) return 0
-    // Formato argentino: 1.234.567,89 -> 1234567.89
-    return parseFloat(saldoStr.replace(/\./g, '').replace(',', '.')) || 0
+  function handleSaldoFocus(cuentaId: number) {
+    setSaldosEditando(prev => ({ ...prev, [cuentaId]: true }))
+    // Al entrar, mostrar número sin formato para editar fácil
+    const valorActual = saldos[cuentaId] || ''
+    if (valorActual) {
+      // Convertir a número simple para editar
+      const num = parseNumber(valorActual)
+      if (num > 0) {
+        setSaldos(prev => ({
+          ...prev,
+          [cuentaId]: num.toString().replace('.', ',')
+        }))
+      }
+    }
   }
 
-  function formatMoney(amount: number) {
-    return new Intl.NumberFormat('es-AR', {
-      style: 'currency',
-      currency: 'ARS',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount)
+  function handleSaldoBlur(cuentaId: number) {
+    setSaldosEditando(prev => ({ ...prev, [cuentaId]: false }))
+    // Al salir, formatear el número
+    const valorActual = saldos[cuentaId] || ''
+    if (valorActual) {
+      const num = parseNumber(valorActual)
+      if (num > 0) {
+        setSaldos(prev => ({
+          ...prev,
+          [cuentaId]: formatNumberForDisplay(num)
+        }))
+      }
+    }
   }
 
-  function formatUSD(amount: number) {
-    return new Intl.NumberFormat('es-AR', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount)
+  function formatMoney(amount: number, currency: string = 'ARS') {
+    const symbol = currency === 'USD' ? 'USD ' : '$ '
+    return symbol + amount.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 
-  // Calcular totales por empresa
+  // Calcular totales por empresa (solo ARS)
   function calcularTotalEmpresa(empresa: string) {
     return cuentas
-      .filter(c => c.empresa === empresa)
-      .reduce((sum, c) => sum + parseSaldo(saldos[c.id] || ''), 0)
+      .filter(c => c.empresa === empresa && (c.moneda || 'ARS') === 'ARS')
+      .reduce((sum, c) => sum + parseNumber(saldos[c.id] || ''), 0)
   }
 
-  const totalGeneral = cuentas.reduce((sum, c) => sum + parseSaldo(saldos[c.id] || ''), 0)
+  // Calcular total USD por empresa
+  function calcularTotalUSD(empresa: string) {
+    return cuentas
+      .filter(c => c.empresa === empresa && c.moneda === 'USD')
+      .reduce((sum, c) => sum + parseNumber(saldos[c.id] || ''), 0)
+  }
 
   // Agrupar cuentas por empresa
   const cuentasPorEmpresa = cuentas.reduce((acc, cuenta) => {
@@ -299,46 +310,37 @@ export default function SaldosBancariosPage() {
 
       <main className="container mx-auto px-6 py-6">
         {/* Botones de acción */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div className="text-slate-600 text-sm">
-            {ultimaActualizacion && (
-              <span>Último guardado: {ultimaActualizacion.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
+        <div className="flex flex-wrap items-center justify-end gap-3 mb-6">
+          <button
+            onClick={descargarImagen}
+            disabled={copiando}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+          >
+            {copiando ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
             )}
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={copiarAlPortapapeles}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                copiado
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-slate-700 hover:bg-slate-800 text-white'
-              }`}
-            >
-              {copiado ? (
-                <>
-                  <Check className="h-4 w-4" />
-                  Copiado!
-                </>
-              ) : (
-                <>
-                  <Copy className="h-4 w-4" />
-                  Copiar Imagen
-                </>
-              )}
-            </button>
-            <button
-              onClick={guardarSaldos}
-              disabled={guardando}
-              className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-            >
-              {guardando ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              Guardar
-            </button>
-          </div>
+            Descargar PNG
+          </button>
+          <button
+            onClick={guardarSaldos}
+            disabled={guardando}
+            className={`flex items-center gap-2 px-5 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 ${
+              guardadoOk
+                ? 'bg-emerald-600 text-white'
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+            }`}
+          >
+            {guardando ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : guardadoOk ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {guardadoOk ? 'Guardado!' : 'Guardar'}
+          </button>
         </div>
 
         {/* Panel de configuración */}
@@ -346,7 +348,7 @@ export default function SaldosBancariosPage() {
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 mb-6">
             <h3 className="text-lg font-semibold text-slate-800 mb-4">Agregar Nueva Cuenta</h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-6">
               <input
                 type="text"
                 placeholder="Nombre del banco"
@@ -363,6 +365,14 @@ export default function SaldosBancariosPage() {
                 <option value="VC">Villalba Cristino</option>
                 <option value="MEGA">Megamundo SA</option>
                 <option value="CRICNOGAP">Cricnogap SRL</option>
+              </select>
+              <select
+                value={nuevaCuenta.moneda}
+                onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, moneda: e.target.value as any })}
+                className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="ARS">Pesos (ARS)</option>
+                <option value="USD">Dólares (USD)</option>
               </select>
               <input
                 type="text"
@@ -389,6 +399,9 @@ export default function SaldosBancariosPage() {
                       {cuenta.empresa}
                     </span>
                     <span className="text-sm text-slate-700">{cuenta.banco}</span>
+                    {cuenta.moneda === 'USD' && (
+                      <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded">USD</span>
+                    )}
                   </div>
                   <button
                     onClick={() => eliminarCuenta(cuenta.id)}
@@ -420,13 +433,14 @@ export default function SaldosBancariosPage() {
 
           {/* Contenido del reporte */}
           <div className="p-5">
-            {/* Por cada empresa */}
             {(['VH', 'VC', 'MEGA', 'CRICNOGAP'] as const).map((empresaKey) => {
               const config = EMPRESAS_CONFIG[empresaKey]
               const cuentasEmpresa = cuentasPorEmpresa[empresaKey] || []
-              if (cuentasEmpresa.length === 0 && empresaKey !== 'CRICNOGAP') return null
+              if (cuentasEmpresa.length === 0) return null
 
               const totalEmpresa = calcularTotalEmpresa(empresaKey)
+              const totalUSD = calcularTotalUSD(empresaKey)
+              const esCricnogap = empresaKey === 'CRICNOGAP'
 
               return (
                 <div key={empresaKey} className="mb-5 last:mb-0">
@@ -434,73 +448,91 @@ export default function SaldosBancariosPage() {
                   <div className="border border-slate-200 rounded-lg overflow-hidden">
                     <table className="w-full">
                       <tbody>
-                        {cuentasEmpresa.map((cuenta, idx) => (
-                          <tr key={cuenta.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                            <td className="py-3 px-4 border-b border-slate-100">
-                              <div className="flex items-center gap-3">
-                                {cuenta.icono ? (
-                                  <img
-                                    src={`/bancos/${cuenta.icono}`}
-                                    alt={cuenta.banco}
-                                    className="w-7 h-7 object-contain"
-                                    onError={(e) => {
-                                      (e.target as HTMLImageElement).src = ''
-                                      ;(e.target as HTMLImageElement).style.display = 'none'
-                                    }}
+                        {cuentasEmpresa.map((cuenta, idx) => {
+                          const esUSD = cuenta.moneda === 'USD'
+                          return (
+                            <tr key={cuenta.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                              <td className="py-3 px-4 border-b border-slate-100">
+                                <div className="flex items-center gap-3">
+                                  {cuenta.icono ? (
+                                    <img
+                                      src={`/bancos/${cuenta.icono}`}
+                                      alt={cuenta.banco}
+                                      className="w-7 h-7 object-contain"
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none'
+                                      }}
+                                    />
+                                  ) : (
+                                    <div className={`w-7 h-7 ${esUSD ? 'bg-green-600' : config.color} rounded flex items-center justify-center`}>
+                                      <Building2 className="h-4 w-4 text-white" />
+                                    </div>
+                                  )}
+                                  <span className="font-semibold text-slate-800">{cuenta.banco}</span>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-right border-b border-slate-100 w-52">
+                                <div className="flex items-center justify-end gap-1">
+                                  <span className={`text-sm font-medium ${esUSD ? 'text-green-600' : 'text-slate-500'}`}>
+                                    {esUSD ? 'USD' : '$'}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={saldos[cuenta.id] || ''}
+                                    onChange={(e) => handleSaldoChange(cuenta.id, e.target.value)}
+                                    onFocus={() => handleSaldoFocus(cuenta.id)}
+                                    onBlur={() => handleSaldoBlur(cuenta.id)}
+                                    className={`w-40 px-3 py-2 text-right font-bold text-lg border rounded-lg focus:ring-2 focus:border-indigo-500 bg-white ${
+                                      esUSD ? 'border-green-300 focus:ring-green-500' : 'border-slate-300 focus:ring-indigo-500'
+                                    }`}
+                                    placeholder="0,00"
                                   />
-                                ) : (
-                                  <div className={`w-7 h-7 ${config.color} rounded flex items-center justify-center`}>
-                                    <Building2 className="h-4 w-4 text-white" />
-                                  </div>
-                                )}
-                                <span className="font-semibold text-slate-800">{cuenta.banco}</span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-right border-b border-slate-100 w-48">
-                              <div className="flex items-center justify-end gap-1">
-                                <span className="text-slate-500 text-sm">$</span>
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={saldos[cuenta.id] || ''}
-                                  onChange={(e) => handleSaldoChange(cuenta.id, e.target.value)}
-                                  className="w-36 px-3 py-2 text-right font-bold text-lg border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                                  placeholder="0,00"
-                                />
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
 
-                  {/* Total de la empresa */}
-                  <div className={`flex items-center justify-between py-3 px-4 mt-2 rounded-lg ${config.colorLight} border-2 ${config.colorBorder}`}>
-                    <span className={`font-bold text-lg ${config.colorText}`}>
-                      Total {config.nombre}
-                    </span>
-                    <span className={`text-2xl font-bold ${config.colorText}`}>
-                      {formatMoney(totalEmpresa)}
-                    </span>
-                  </div>
-
-                  {/* Campo USD para Cricnogap */}
-                  {empresaKey === 'CRICNOGAP' && (
-                    <div className="flex items-center justify-between py-3 px-4 mt-2 rounded-lg bg-green-50 border-2 border-green-300">
-                      <span className="font-bold text-lg text-green-800">
-                        Cricnogap USD
+                  {/* Total de la empresa - Solo si NO es Cricnogap o si tiene más de una cuenta ARS */}
+                  {!esCricnogap && (
+                    <div className={`flex items-center justify-between py-3 px-4 mt-2 rounded-lg ${config.colorLight} border-2 ${config.colorBorder}`}>
+                      <span className={`font-bold text-lg ${config.colorText}`}>
+                        Total {config.nombre}
                       </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-green-600 font-medium">USD</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={saldoUSD}
-                          onChange={(e) => setSaldoUSD(e.target.value.replace(/[^\d.,]/g, ''))}
-                          className="w-32 px-3 py-2 text-right font-bold text-lg border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white"
-                          placeholder="0,00"
-                        />
+                      <div className="text-right">
+                        <span className={`text-2xl font-bold ${config.colorText}`}>
+                          {formatMoney(totalEmpresa)}
+                        </span>
+                        {totalUSD > 0 && (
+                          <p className="text-sm text-green-700 font-semibold">
+                            {formatMoney(totalUSD, 'USD')}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Para Cricnogap: mostrar totales separados si hay varias cuentas */}
+                  {esCricnogap && cuentasEmpresa.length > 1 && (
+                    <div className={`flex items-center justify-between py-3 px-4 mt-2 rounded-lg ${config.colorLight} border-2 ${config.colorBorder}`}>
+                      <span className={`font-bold text-lg ${config.colorText}`}>
+                        Total {config.nombre}
+                      </span>
+                      <div className="text-right">
+                        {totalEmpresa > 0 && (
+                          <p className={`text-xl font-bold ${config.colorText}`}>
+                            {formatMoney(totalEmpresa)}
+                          </p>
+                        )}
+                        {totalUSD > 0 && (
+                          <p className="text-xl font-bold text-green-700">
+                            {formatMoney(totalUSD, 'USD')}
+                          </p>
+                        )}
                       </div>
                     </div>
                   )}

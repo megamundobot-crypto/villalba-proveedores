@@ -11,9 +11,13 @@ CREATE TABLE IF NOT EXISTS cuentas_bancarias (
   orden INTEGER DEFAULT 0,
   activa BOOLEAN DEFAULT true,
   saldo_actual NUMERIC(15,2) DEFAULT 0,
+  moneda VARCHAR(3) DEFAULT 'ARS' CHECK (moneda IN ('ARS', 'USD')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Si la tabla ya existe, agregar columna moneda
+ALTER TABLE cuentas_bancarias ADD COLUMN IF NOT EXISTS moneda VARCHAR(3) DEFAULT 'ARS';
 
 -- =====================================================
 -- DATOS INICIALES - Cuentas bancarias
@@ -42,8 +46,9 @@ INSERT INTO cuentas_bancarias (banco, empresa, icono, orden, saldo_actual) VALUE
 ON CONFLICT DO NOTHING;
 
 -- Cricnogap SRL
-INSERT INTO cuentas_bancarias (banco, empresa, icono, orden, saldo_actual) VALUES
-('Cricnogap', 'CRICNOGAP', 'nbch.png', 1, 0)
+INSERT INTO cuentas_bancarias (banco, empresa, icono, orden, saldo_actual, moneda) VALUES
+('NBCH $', 'CRICNOGAP', 'nbch.png', 1, 0, 'ARS'),
+('NBCH USD', 'CRICNOGAP', 'nbch.png', 2, 0, 'USD')
 ON CONFLICT DO NOTHING;
 
 -- =====================================================
