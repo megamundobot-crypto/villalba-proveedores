@@ -263,10 +263,22 @@ export default function Dashboard() {
         })
       }
 
+      const hoy = new Date()
       const saldosPorProveedor: Record<number, ProveedorConFacturas> = {}
       facturasData.forEach((f: any) => {
         const pagado = pagosPorFactura[f.id] || 0
-        const saldo = f.monto_total - pagado
+
+        // Calcular monto efectivo con descuento si aplica
+        let montoEfectivo = f.monto_total
+        if (f.monto_descuento && f.monto_descuento > 0) {
+          const fechaLimite = f.fecha_limite_descuento ? new Date(f.fecha_limite_descuento) : null
+          const descuentoVigente = !fechaLimite || fechaLimite >= hoy
+          if (descuentoVigente) {
+            montoEfectivo = f.monto_total - f.monto_descuento
+          }
+        }
+
+        const saldo = montoEfectivo - pagado
         const provId = f.proveedor_id
         const provNombre = f.proveedores?.nombre || 'Sin nombre'
 
@@ -388,11 +400,29 @@ export default function Dashboard() {
         })
       }
 
-      const facturasConPagos: FacturaConPagos[] = facturasData.map((f: any) => ({
-        ...f,
-        total_pagado: pagosPorFactura[f.id] || 0,
-        saldo_pendiente: f.monto_total - (pagosPorFactura[f.id] || 0)
-      }))
+      const hoy = new Date()
+      const facturasConPagos: FacturaConPagos[] = facturasData.map((f: any) => {
+        const totalPagado = pagosPorFactura[f.id] || 0
+
+        // Calcular monto efectivo con descuento si aplica
+        let montoEfectivo = f.monto_total
+        let descuentoAplicado = 0
+        if (f.monto_descuento && f.monto_descuento > 0) {
+          const fechaLimite = f.fecha_limite_descuento ? new Date(f.fecha_limite_descuento) : null
+          const descuentoVigente = !fechaLimite || fechaLimite >= hoy
+          if (descuentoVigente) {
+            descuentoAplicado = f.monto_descuento
+            montoEfectivo = f.monto_total - descuentoAplicado
+          }
+        }
+
+        return {
+          ...f,
+          total_pagado: totalPagado,
+          saldo_pendiente: montoEfectivo - totalPagado,
+          descuento_aplicado: descuentoAplicado
+        }
+      })
 
       setSaldos(prev => prev.map(p => p.id === proveedorId ? { ...p, facturas: facturasConPagos } : p))
       setSaldosFiltrados(prev => prev.map(p => p.id === proveedorId ? { ...p, facturas: facturasConPagos } : p))

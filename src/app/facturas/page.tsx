@@ -229,13 +229,33 @@ export default function FacturasPage() {
         if (dias > 40) alerta = 'rojo'
         else if (dias > 30) alerta = 'amarillo'
 
+        // Calcular monto efectivo (con descuento si aplica)
+        // El descuento se aplica si:
+        // 1. Hay monto_descuento definido
+        // 2. La fecha límite no pasó O no hay fecha límite
+        let montoEfectivo = f.monto_total
+        let descuentoAplicado = 0
+        const tieneDescuento = f.monto_descuento && f.monto_descuento > 0
+
+        if (tieneDescuento) {
+          const fechaLimite = f.fecha_limite_descuento ? new Date(f.fecha_limite_descuento) : null
+          const descuentoVigente = !fechaLimite || fechaLimite >= hoy
+
+          if (descuentoVigente) {
+            descuentoAplicado = f.monto_descuento
+            montoEfectivo = f.monto_total - descuentoAplicado
+          }
+        }
+
         return {
           ...f,
           proveedor_nombre: f.proveedores?.nombre,
           alerta,
           dias_antiguedad: dias,
           total_pagado: totalPagado,
-          saldo_pendiente: f.monto_total - totalPagado
+          saldo_pendiente: montoEfectivo - totalPagado,
+          descuento_aplicado: descuentoAplicado,
+          monto_efectivo: montoEfectivo
         }
       })
       setFacturas(facturasConDatos)
@@ -322,6 +342,36 @@ export default function FacturasPage() {
         `${tipoDoc} ${formData.numero} de ${proveedorNombre} modificada`,
         { factura_id: editingFactura.id, numero: formData.numero, proveedor: proveedorNombre, empresa: formData.empresa, monto: montoTotal, tipo: formData.tipo_documento }
       )
+
+      // Actualizar cuenta interna si aplica 65/35
+      if (formData.aplica_65_35) {
+        // Calcular el monto efectivo (con descuento si aplica)
+        const descuento = formData.monto_descuento ? parseFloat(formData.monto_descuento) : 0
+        const montoConDescuento = Math.abs(montoTotal) - descuento
+        const montoNetoAbs = montoConDescuento / 1.21
+        const esNC = formData.tipo_documento === 'NC'
+
+        let pagador: 'VH' | 'VC'
+        let porcentaje: number
+
+        if (formData.empresa === 'VH') {
+          pagador = 'VC'
+          porcentaje = 0.35
+        } else {
+          pagador = 'VH'
+          porcentaje = 0.65
+        }
+
+        const montoDeuda = montoNetoAbs * porcentaje
+        const montoFinal = esNC ? -montoDeuda : montoDeuda
+
+        // Actualizar el registro de cuenta_interna si existe
+        await supabase.from('cuenta_interna').update({
+          debe_vh: pagador === 'VH' ? montoFinal : 0,
+          debe_vc: pagador === 'VC' ? montoFinal : 0,
+          monto: montoFinal
+        }).eq('factura_id', editingFactura.id)
+      }
     } else {
       const { data: nuevaFactura } = await supabase.from('facturas').insert([dataToSave]).select().single()
       await registrarAuditoria(
@@ -332,8 +382,11 @@ export default function FacturasPage() {
 
       // Si aplica regla 65/35, crear registro en cuenta_interna
       if (formData.aplica_65_35 && nuevaFactura) {
-        // Calcular el monto neto (sin IVA)
-        const montoNetoAbs = Math.abs(montoTotal) / 1.21
+        // Calcular el monto efectivo (con descuento si aplica)
+        const descuento = formData.monto_descuento ? parseFloat(formData.monto_descuento) : 0
+        const montoConDescuento = Math.abs(montoTotal) - descuento
+        // Calcular el monto neto (sin IVA) sobre el monto con descuento
+        const montoNetoAbs = montoConDescuento / 1.21
 
         // Determinar quién debe a quién según la empresa de la factura
         // Si FC de VH: VC debe a VH el 35%
@@ -732,9 +785,16 @@ export default function FacturasPage() {
                         {new Date(factura.fecha).toLocaleDateString('es-AR')}
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <span className={`font-semibold tabular-nums ${factura.monto_total < 0 ? 'text-red-600' : 'text-slate-700'}`}>
-                          {factura.monto_total < 0 ? '-' : ''}{formatMoney(Math.abs(factura.monto_total))}
-                        </span>
+                        <div className="flex flex-col items-end">
+                          <span className={`font-semibold tabular-nums ${factura.monto_total < 0 ? 'text-red-600' : 'text-slate-700'}`}>
+                            {factura.monto_total < 0 ? '-' : ''}{formatMoney(Math.abs(factura.monto_total))}
+                          </span>
+                          {(factura as any).descuento_aplicado > 0 && (
+                            <span className="text-xs text-emerald-600 font-medium">
+                              -{formatMoney((factura as any).descuento_aplicado)} dto
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-4 text-right">
                         <span className={`font-bold tabular-nums ${Number(factura.saldo_pendiente) < 0 ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -976,28 +1036,49 @@ export default function FacturasPage() {
                 </div>
 
                 <div className="border-t border-slate-200 pt-5">
-                  <h3 className="font-bold text-slate-800 mb-4">Descuento por pronto pago</h3>
+                  <h3 className="font-bold text-slate-800 mb-2">Descuento por pronto pago</h3>
+                  <p className="text-sm text-slate-500 mb-4">El descuento se aplicará al saldo si se paga antes de la fecha límite</p>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-1.5">% Descuento</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.descuento_pronto_pago}
-                        onChange={e => setFormData({...formData, descuento_pronto_pago: e.target.value})}
-                        className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
-                        placeholder="Ej: 5"
-                      />
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.descuento_pronto_pago}
+                          onChange={e => {
+                            const porcentaje = parseFloat(e.target.value) || 0
+                            const montoTotal = parseFloat(formData.monto_total) || 0
+                            const montoDesc = montoTotal * (porcentaje / 100)
+                            setFormData({
+                              ...formData,
+                              descuento_pronto_pago: e.target.value,
+                              monto_descuento: montoDesc > 0 ? montoDesc.toFixed(2) : ''
+                            })
+                          }}
+                          className="w-full border border-slate-300 rounded-xl px-4 py-3 pr-8 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
+                          placeholder="Ej: 5"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">%</span>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-1.5">Monto descuento</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.monto_descuento}
-                        onChange={e => setFormData({...formData, monto_descuento: e.target.value})}
-                        className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
-                      />
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.monto_descuento}
+                          onChange={e => setFormData({...formData, monto_descuento: e.target.value})}
+                          className="w-full pl-8 border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
+                        />
+                      </div>
+                      {formData.monto_descuento && parseFloat(formData.monto_descuento) > 0 && formData.monto_total && (
+                        <p className="text-xs text-emerald-600 font-medium mt-1">
+                          Saldo con dto: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(parseFloat(formData.monto_total) - parseFloat(formData.monto_descuento))}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-1.5">Fecha límite</label>
@@ -1007,8 +1088,27 @@ export default function FacturasPage() {
                         onChange={e => setFormData({...formData, fecha_limite_descuento: e.target.value})}
                         className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all"
                       />
+                      {formData.fecha_limite_descuento && (
+                        <p className={`text-xs mt-1 ${new Date(formData.fecha_limite_descuento) < new Date() ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {new Date(formData.fecha_limite_descuento) < new Date() ? '⚠️ Fecha vencida' : '✓ Descuento vigente'}
+                        </p>
+                      )}
                     </div>
                   </div>
+                  {formData.monto_descuento && parseFloat(formData.monto_descuento) > 0 && (
+                    <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
+                      <span className="text-sm text-emerald-700">
+                        <strong>Descuento aplicable:</strong> -{new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(parseFloat(formData.monto_descuento))}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({...formData, descuento_pronto_pago: '', monto_descuento: '', fecha_limite_descuento: ''})}
+                        className="text-xs text-red-600 hover:text-red-700 font-medium"
+                      >
+                        Quitar descuento
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div>
