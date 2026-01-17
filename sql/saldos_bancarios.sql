@@ -16,10 +16,10 @@ CREATE TABLE IF NOT EXISTS cuentas_bancarias (
 );
 
 -- =====================================================
--- DATOS INICIALES - Cuentas bancarias según tu Excel
+-- DATOS INICIALES - Cuentas bancarias
 -- =====================================================
 
--- Villalba Hnos (VH)
+-- Villalba Hermanos SRL (VH)
 INSERT INTO cuentas_bancarias (banco, empresa, icono, orden, saldo_actual) VALUES
 ('Río', 'VH', 'rio.png', 1, 0),
 ('NBCH', 'VH', 'nbch.png', 2, 0),
@@ -30,20 +30,20 @@ ON CONFLICT DO NOTHING;
 
 -- Villalba Cristino (VC)
 INSERT INTO cuentas_bancarias (banco, empresa, icono, orden, saldo_actual) VALUES
-('Chaco Cristino', 'VC', 'chaco.png', 1, 0),
+('NBCH Cristino', 'VC', 'nbch.png', 1, 0),
 ('Nación Cristino', 'VC', 'nacion.png', 2, 0),
 ('Mercado Pago Cristino', 'VC', 'mercadopago.png', 3, 0)
 ON CONFLICT DO NOTHING;
 
--- Mega SA
+-- Megamundo SA (MEGA)
 INSERT INTO cuentas_bancarias (banco, empresa, icono, orden, saldo_actual) VALUES
-('Chaco Mega SA', 'MEGA', 'chaco.png', 1, 0),
+('NBCH Mega SA', 'MEGA', 'nbch.png', 1, 0),
 ('Mercado Pago Mega SA', 'MEGA', 'mercadopago.png', 2, 0)
 ON CONFLICT DO NOTHING;
 
--- Cricnogap
+-- Cricnogap SRL
 INSERT INTO cuentas_bancarias (banco, empresa, icono, orden, saldo_actual) VALUES
-('Cricnogap', 'CRICNOGAP', 'cricnogap.png', 1, 0)
+('Cricnogap', 'CRICNOGAP', 'nbch.png', 1, 0)
 ON CONFLICT DO NOTHING;
 
 -- =====================================================

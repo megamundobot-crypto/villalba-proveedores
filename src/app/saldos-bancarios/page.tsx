@@ -21,10 +21,10 @@ interface CuentaBancaria {
 
 // Configuración de empresas con colores
 const EMPRESAS_CONFIG = {
-  VH: { nombre: 'Villalba Hnos', color: 'bg-blue-600', colorLight: 'bg-blue-100', colorText: 'text-blue-800', colorBorder: 'border-blue-300' },
+  VH: { nombre: 'Villalba Hermanos SRL', color: 'bg-blue-600', colorLight: 'bg-blue-100', colorText: 'text-blue-800', colorBorder: 'border-blue-300' },
   VC: { nombre: 'Villalba Cristino', color: 'bg-emerald-600', colorLight: 'bg-emerald-100', colorText: 'text-emerald-800', colorBorder: 'border-emerald-300' },
-  MEGA: { nombre: 'Mega SA', color: 'bg-purple-600', colorLight: 'bg-purple-100', colorText: 'text-purple-800', colorBorder: 'border-purple-300' },
-  CRICNOGAP: { nombre: 'Cricnogap', color: 'bg-amber-600', colorLight: 'bg-amber-100', colorText: 'text-amber-800', colorBorder: 'border-amber-300' }
+  MEGA: { nombre: 'Megamundo SA', color: 'bg-purple-600', colorLight: 'bg-purple-100', colorText: 'text-purple-800', colorBorder: 'border-purple-300' },
+  CRICNOGAP: { nombre: 'Cricnogap SRL', color: 'bg-amber-600', colorLight: 'bg-amber-100', colorText: 'text-amber-800', colorBorder: 'border-amber-300' }
 }
 
 export default function SaldosBancariosPage() {
@@ -306,10 +306,10 @@ export default function SaldosBancariosPage() {
                 onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, empresa: e.target.value as any })}
                 className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="VH">Villalba Hnos</option>
+                <option value="VH">Villalba Hermanos SRL</option>
                 <option value="VC">Villalba Cristino</option>
-                <option value="MEGA">Mega SA</option>
-                <option value="CRICNOGAP">Cricnogap</option>
+                <option value="MEGA">Megamundo SA</option>
+                <option value="CRICNOGAP">Cricnogap SRL</option>
               </select>
               <input
                 type="text"
