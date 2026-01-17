@@ -8,7 +8,6 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import NavRapida from '@/components/NavRapida'
-import html2canvas from 'html2canvas'
 
 interface CuentaBancaria {
   id: number
@@ -143,51 +142,139 @@ export default function SaldosBancariosPage() {
     }
   }
 
-  // Descargar imagen PNG
+  // Generar imagen PNG usando Canvas nativo (sin html2canvas)
   async function descargarImagen() {
-    if (!reporteRef.current) return
-
     setDescargando(true)
 
     try {
-      // Ocultar inputs y mostrar valores formateados para la captura
-      const inputs = reporteRef.current.querySelectorAll('input')
-      const valoresOriginales: { input: HTMLInputElement, display: string }[] = []
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')!
 
-      inputs.forEach(input => {
-        const valor = input.value || '0,00'
-        valoresOriginales.push({ input, display: input.style.display })
+      // Configuración
+      const width = 400
+      const padding = 20
+      const rowHeight = 36
+      const headerHeight = 60
 
-        // Crear span con el valor
-        const span = document.createElement('span')
-        span.textContent = valor
-        span.className = 'font-bold text-lg'
-        span.setAttribute('data-temp-span', 'true')
-        input.style.display = 'none'
-        input.parentNode?.insertBefore(span, input.nextSibling)
+      // Calcular altura total
+      let totalRows = 0
+      const empresasActivas = (['VH', 'VC', 'MEGA', 'CRICNOGAP'] as const).filter(e => {
+        const ctas = cuentas.filter(c => c.empresa === e)
+        return ctas.length > 0
       })
 
-      const canvas = await html2canvas(reporteRef.current, {
-        backgroundColor: '#ffffff',
-        scale: 2,
-        logging: false,
-        imageTimeout: 0,
-        onclone: (clonedDoc) => {
-          // Remover imágenes problemáticas del clon
-          const imgs = clonedDoc.querySelectorAll('img')
-          imgs.forEach(img => {
-            img.style.display = 'none'
-          })
+      empresasActivas.forEach(empresaKey => {
+        const ctas = cuentas.filter(c => c.empresa === empresaKey)
+        totalRows += ctas.length + 1 // +1 por el total
+      })
+
+      const height = headerHeight + (totalRows * rowHeight) + padding * 2
+
+      canvas.width = width * 2 // Retina
+      canvas.height = height * 2
+      ctx.scale(2, 2)
+
+      // Fondo blanco
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, width, height)
+
+      // Header
+      ctx.fillStyle = '#1e293b'
+      ctx.fillRect(0, 0, width, headerHeight)
+
+      ctx.fillStyle = '#ffffff'
+      ctx.font = 'bold 18px system-ui, -apple-system, sans-serif'
+      ctx.fillText('Saldos Bancarios', padding, 28)
+
+      ctx.fillStyle = '#94a3b8'
+      ctx.font = '11px system-ui, -apple-system, sans-serif'
+      ctx.fillText(fechaHoy, padding, 46)
+
+      ctx.fillStyle = '#ffffff'
+      ctx.font = 'bold 18px system-ui, -apple-system, sans-serif'
+      ctx.textAlign = 'right'
+      ctx.fillText(horaActual, width - padding, 36)
+      ctx.textAlign = 'left'
+
+      // Contenido
+      let y = headerHeight + padding
+
+      const colores: Record<string, { bg: string, text: string, border: string }> = {
+        VH: { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
+        VC: { bg: '#d1fae5', text: '#065f46', border: '#6ee7b7' },
+        MEGA: { bg: '#f3e8ff', text: '#6b21a8', border: '#c4b5fd' },
+        CRICNOGAP: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' }
+      }
+
+      empresasActivas.forEach(empresaKey => {
+        const config = colores[empresaKey]
+        const ctas = cuentas.filter(c => c.empresa === empresaKey)
+        const esCricnogap = empresaKey === 'CRICNOGAP'
+
+        // Filas de cuentas
+        ctas.forEach((cuenta, idx) => {
+          const esUSD = cuenta.moneda === 'USD'
+
+          // Fondo alternado
+          ctx.fillStyle = idx % 2 === 0 ? '#ffffff' : '#f8fafc'
+          ctx.fillRect(padding - 5, y - 2, width - padding * 2 + 10, rowHeight - 4)
+
+          // Nombre del banco
+          ctx.fillStyle = '#1e293b'
+          ctx.font = '13px system-ui, -apple-system, sans-serif'
+          ctx.fillText(cuenta.banco, padding, y + 16)
+
+          // Monto
+          const monto = saldos[cuenta.id] || '0,00'
+          const simbolo = esUSD ? 'USD ' : '$ '
+          ctx.fillStyle = esUSD ? '#059669' : '#1e293b'
+          ctx.font = 'bold 14px system-ui, -apple-system, sans-serif'
+          ctx.textAlign = 'right'
+          ctx.fillText(simbolo + monto, width - padding, y + 16)
+          ctx.textAlign = 'left'
+
+          y += rowHeight - 6
+        })
+
+        // Total de la empresa
+        const totalEmpresa = calcularTotalEmpresa(empresaKey)
+        const totalUSD = calcularTotalUSD(empresaKey)
+
+        if (!esCricnogap || ctas.length > 1) {
+          // Fondo del total
+          ctx.fillStyle = config.bg
+          ctx.fillRect(padding - 5, y, width - padding * 2 + 10, rowHeight - 2)
+
+          // Borde
+          ctx.strokeStyle = config.border
+          ctx.lineWidth = 1
+          ctx.strokeRect(padding - 5, y, width - padding * 2 + 10, rowHeight - 2)
+
+          // Texto
+          ctx.fillStyle = config.text
+          ctx.font = 'bold 12px system-ui, -apple-system, sans-serif'
+          ctx.fillText('Total ' + EMPRESAS_CONFIG[empresaKey].nombre, padding, y + 18)
+
+          ctx.font = 'bold 15px system-ui, -apple-system, sans-serif'
+          ctx.textAlign = 'right'
+          ctx.fillText(formatMoney(totalEmpresa), width - padding, y + 18)
+          ctx.textAlign = 'left'
+
+          if (totalUSD > 0) {
+            ctx.fillStyle = '#059669'
+            ctx.font = 'bold 12px system-ui, -apple-system, sans-serif'
+            ctx.textAlign = 'right'
+            ctx.fillText(formatMoney(totalUSD, 'USD'), width - padding, y + 32)
+            ctx.textAlign = 'left'
+          }
+
+          y += rowHeight + 8
+        } else {
+          y += 8
         }
       })
 
-      // Restaurar inputs
-      valoresOriginales.forEach(({ input, display }) => {
-        input.style.display = display
-      })
-      // Remover spans temporales
-      reporteRef.current.querySelectorAll('[data-temp-span]').forEach(el => el.remove())
-
+      // Descargar
       const fecha = new Date().toLocaleDateString('es-AR').replace(/\//g, '-')
       const nombreArchivo = `saldos-bancarios-${fecha}.png`
 
@@ -202,7 +289,7 @@ export default function SaldosBancariosPage() {
       setTimeout(() => setCopiado(false), 2000)
     } catch (error) {
       console.error('Error descargando:', error)
-      alert('Error al generar la imagen. Intentá de nuevo.')
+      alert('Error al generar la imagen: ' + (error as Error).message)
     }
 
     setDescargando(false)
