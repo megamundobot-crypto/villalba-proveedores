@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase, SaldoProveedor, CuentaInternaResumen, Factura } from '@/lib/supabase'
+import { supabase, SaldoProveedor, Factura } from '@/lib/supabase'
 import Link from 'next/link'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import UserMenu from '@/components/UserMenu'
@@ -15,6 +15,23 @@ interface FacturaConPagos extends Factura {
 
 interface ProveedorConFacturas extends SaldoProveedor {
   facturas?: FacturaConPagos[]
+}
+
+interface FacturaDestacada {
+  id: number
+  factura_id: number
+  nota?: string
+  factura: {
+    id: number
+    numero: string
+    fecha: string
+    monto_total: number
+    empresa: 'VH' | 'VC'
+    proveedor_id: number
+    proveedores: { nombre: string }
+  }
+  total_pagado: number
+  saldo_pendiente: number
 }
 
 // Icons as components
@@ -74,13 +91,23 @@ const Icons = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
     </svg>
   ),
+  pin: (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+    </svg>
+  ),
+  pinFilled: (
+    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+      <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+    </svg>
+  ),
 }
 
 export default function Dashboard() {
   const { user } = useAuth()
   const [saldos, setSaldos] = useState<ProveedorConFacturas[]>([])
   const [saldosFiltrados, setSaldosFiltrados] = useState<ProveedorConFacturas[]>([])
-  const [cuentaInterna, setCuentaInterna] = useState<CuentaInternaResumen[]>([])
+  const [facturasDestacadas, setFacturasDestacadas] = useState<FacturaDestacada[]>([])
   const [loading, setLoading] = useState(true)
   const [totales, setTotales] = useState({ vh: 0, vc: 0, total: 0 })
   const [alertas, setAlertas] = useState({ verde: 0, amarillo: 0, rojo: 0 })
@@ -274,16 +301,72 @@ export default function Dashboard() {
       setAlertas({ verde, amarillo, rojo })
     }
 
-    const { data: cuentaData } = await supabase.from('cuenta_interna').select('*')
-    if (cuentaData && cuentaData.length > 0) {
-      const vhDebeVc = cuentaData.reduce((sum, c) => sum + (c.pagado ? 0 : Number(c.debe_vh)), 0)
-      const vcDebeVh = cuentaData.reduce((sum, c) => sum + (c.pagado ? 0 : Number(c.debe_vc)), 0)
-      setCuentaInterna([
-        { concepto: 'VH debe a VC', monto_pendiente: vhDebeVc, monto_pagado: 0, monto_total: vhDebeVc },
-        { concepto: 'VC debe a VH', monto_pendiente: vcDebeVh, monto_pagado: 0, monto_total: vcDebeVh }
-      ])
-    }
+    // Cargar facturas destacadas
+    await loadFacturasDestacadas()
+
     setLoading(false)
+  }
+
+  async function loadFacturasDestacadas() {
+    const { data: destacadasData } = await supabase
+      .from('facturas_destacadas')
+      .select(`
+        id,
+        factura_id,
+        nota,
+        factura:facturas(id, numero, fecha, monto_total, empresa, proveedor_id, proveedores(nombre))
+      `)
+
+    if (destacadasData) {
+      // Obtener pagos para calcular saldos
+      const facturaIds = destacadasData.map(d => d.factura_id)
+      const { data: pagosData } = await supabase
+        .from('pagos')
+        .select('factura_id, monto')
+        .in('factura_id', facturaIds)
+
+      const pagosPorFactura: Record<number, number> = {}
+      if (pagosData) {
+        pagosData.forEach(p => {
+          pagosPorFactura[p.factura_id] = (pagosPorFactura[p.factura_id] || 0) + Number(p.monto)
+        })
+      }
+
+      const destacadasConSaldo = destacadasData.map(d => {
+        const factura = d.factura as any
+        const totalPagado = pagosPorFactura[d.factura_id] || 0
+        const saldoPendiente = (factura?.monto_total || 0) - totalPagado
+        return {
+          ...d,
+          factura,
+          total_pagado: totalPagado,
+          saldo_pendiente: saldoPendiente
+        }
+      }).filter(d => d.saldo_pendiente > 0) // Solo mostrar si tiene saldo pendiente
+
+      setFacturasDestacadas(destacadasConSaldo as FacturaDestacada[])
+    }
+  }
+
+  async function toggleFacturaDestacada(facturaId: number, e?: React.MouseEvent) {
+    if (e) e.stopPropagation()
+
+    const yaDestacada = facturasDestacadas.some(d => d.factura_id === facturaId)
+
+    if (yaDestacada) {
+      // Quitar de destacadas
+      await supabase.from('facturas_destacadas').delete().eq('factura_id', facturaId)
+    } else {
+      // Agregar a destacadas
+      await supabase.from('facturas_destacadas').insert({ factura_id: facturaId })
+    }
+
+    // Recargar destacadas
+    await loadFacturasDestacadas()
+  }
+
+  function isFacturaDestacada(facturaId: number): boolean {
+    return facturasDestacadas.some(d => d.factura_id === facturaId)
   }
 
   async function loadFacturasProveedor(proveedorId: number) {
@@ -435,21 +518,85 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Cuenta Interna */}
-          {cuentaInterna.length > 0 && (cuentaInterna[0].monto_pendiente > 0 || cuentaInterna[1].monto_pendiente > 0) && (
+          {/* Facturas Destacadas */}
+          {facturasDestacadas.length > 0 && (
             <div className="card-premium p-6 mb-8 animate-slideUp" style={{animationDelay: '0.2s'}}>
               <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center text-violet-600">{Icons.exchange}</div>
-                <div><h2 className="font-semibold text-slate-800">Cuenta Interna</h2><p className="text-sm text-slate-500">Balance entre empresas</p></div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-5 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100">
-                  <p className="text-sm font-medium text-blue-600 mb-1">VH debe a VC</p>
-                  <p className="text-2xl font-bold text-blue-700 tabular-nums">{formatMoney(Number(cuentaInterna[0].monto_pendiente))}</p>
+                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                  </svg>
                 </div>
-                <div className="p-5 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100">
-                  <p className="text-sm font-medium text-emerald-600 mb-1">VC debe a VH</p>
-                  <p className="text-2xl font-bold text-emerald-700 tabular-nums">{formatMoney(Number(cuentaInterna[1].monto_pendiente))}</p>
+                <div>
+                  <h2 className="font-semibold text-slate-800">Destacados</h2>
+                  <p className="text-sm text-slate-500">Facturas ancladas como recordatorio</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Columna VC - Villalba Cristino */}
+                <div>
+                  <h3 className="text-sm font-semibold text-emerald-700 mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    Villalba Cristino
+                  </h3>
+                  <div className="space-y-2">
+                    {facturasDestacadas
+                      .filter(d => d.factura?.empresa === 'VC')
+                      .map(d => (
+                        <div key={d.id} className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-100 group">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-slate-800 text-sm truncate">{d.factura?.proveedores?.nombre}</p>
+                            <p className="text-xs text-slate-500">FC {d.factura?.numero} • {formatDate(d.factura?.fecha)}</p>
+                          </div>
+                          <div className="flex items-center gap-2 ml-2">
+                            <span className="font-bold text-emerald-700 tabular-nums whitespace-nowrap">{formatMoney(d.saldo_pendiente)}</span>
+                            <button
+                              onClick={(e) => toggleFacturaDestacada(d.factura_id, e)}
+                              className="p-1.5 text-amber-500 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                              title="Quitar de destacados"
+                            >
+                              {Icons.x}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    {facturasDestacadas.filter(d => d.factura?.empresa === 'VC').length === 0 && (
+                      <p className="text-sm text-slate-400 text-center py-4">Sin facturas ancladas</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Columna VH - Villalba Hermanos */}
+                <div>
+                  <h3 className="text-sm font-semibold text-blue-700 mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    Villalba Hermanos SRL
+                  </h3>
+                  <div className="space-y-2">
+                    {facturasDestacadas
+                      .filter(d => d.factura?.empresa === 'VH')
+                      .map(d => (
+                        <div key={d.id} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-100 group">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-slate-800 text-sm truncate">{d.factura?.proveedores?.nombre}</p>
+                            <p className="text-xs text-slate-500">FC {d.factura?.numero} • {formatDate(d.factura?.fecha)}</p>
+                          </div>
+                          <div className="flex items-center gap-2 ml-2">
+                            <span className="font-bold text-blue-700 tabular-nums whitespace-nowrap">{formatMoney(d.saldo_pendiente)}</span>
+                            <button
+                              onClick={(e) => toggleFacturaDestacada(d.factura_id, e)}
+                              className="p-1.5 text-amber-500 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                              title="Quitar de destacados"
+                            >
+                              {Icons.x}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    {facturasDestacadas.filter(d => d.factura?.empresa === 'VH').length === 0 && (
+                      <p className="text-sm text-slate-400 text-center py-4">Sin facturas ancladas</p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -665,6 +812,7 @@ export default function Dashboard() {
                                       <th className="px-4 py-3 text-right font-semibold text-slate-600">Pagado</th>
                                       <th className="px-4 py-3 text-right font-semibold text-slate-600">Saldo</th>
                                       <th className="px-4 py-3 text-center font-semibold text-slate-600">Días</th>
+                                      <th className="px-2 py-3 w-10"></th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100 bg-white">
@@ -700,6 +848,19 @@ export default function Dashboard() {
                                           <td className="px-4 py-3 text-right tabular-nums">{fc.total_pagado > 0 ? <span className="text-emerald-600">{formatMoney(fc.total_pagado)}</span> : <span className="text-slate-300">—</span>}</td>
                                           <td className="px-4 py-3 text-right font-bold tabular-nums text-red-600">{formatMoney(fc.saldo_pendiente)}</td>
                                           <td className="px-4 py-3 text-center"><span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${st.bg} ${st.text} border ${st.border}`}>{dias}d</span></td>
+                                          <td className="px-2 py-3 text-center">
+                                            <button
+                                              onClick={(e) => toggleFacturaDestacada(fc.id, e)}
+                                              className={`p-1.5 rounded-lg transition-colors ${
+                                                isFacturaDestacada(fc.id)
+                                                  ? 'text-amber-500 bg-amber-50 hover:bg-amber-100'
+                                                  : 'text-slate-300 hover:text-amber-500 hover:bg-amber-50'
+                                              }`}
+                                              title={isFacturaDestacada(fc.id) ? 'Quitar de destacados' : 'Anclar a destacados'}
+                                            >
+                                              {isFacturaDestacada(fc.id) ? Icons.pinFilled : Icons.pin}
+                                            </button>
+                                          </td>
                                         </tr>
                                       )
                                     })}
