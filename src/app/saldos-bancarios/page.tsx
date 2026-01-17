@@ -175,12 +175,12 @@ export default function SaldosBancariosPage() {
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')!
 
-      // Configuración - 30% más grande en tamaño y fuentes
-      const width = 560
-      const padding = 28
-      const rowHeight = 52
-      const headerHeight = 85
-      const iconSize = 30
+      // Configuración - 55% más grande que original (30% + 25%)
+      const width = 620
+      const padding = 32
+      const rowHeight = 62
+      const headerHeight = 100
+      const iconSize = 36
 
       // Calcular altura total
       let totalRows = 0
@@ -210,17 +210,17 @@ export default function SaldosBancariosPage() {
       ctx.fillRect(0, 0, width, headerHeight)
 
       ctx.fillStyle = '#ffffff'
-      ctx.font = 'bold 28px system-ui, -apple-system, sans-serif'
-      ctx.fillText('Saldos Bancarios', padding, 38)
+      ctx.font = 'bold 34px system-ui, -apple-system, sans-serif'
+      ctx.fillText('Saldos Bancarios', padding, 45)
 
       ctx.fillStyle = '#94a3b8'
-      ctx.font = '16px system-ui, -apple-system, sans-serif'
-      ctx.fillText(fechaHoy, padding, 65)
+      ctx.font = '18px system-ui, -apple-system, sans-serif'
+      ctx.fillText(fechaHoy, padding, 78)
 
       ctx.fillStyle = '#ffffff'
-      ctx.font = 'bold 28px system-ui, -apple-system, sans-serif'
+      ctx.font = 'bold 34px system-ui, -apple-system, sans-serif'
       ctx.textAlign = 'right'
-      ctx.fillText(horaActual, width - padding, 52)
+      ctx.fillText(horaActual, width - padding, 62)
       ctx.textAlign = 'left'
 
       // Contenido
@@ -263,27 +263,27 @@ export default function SaldosBancariosPage() {
 
             // Ícono de banco simple (letra $)
             ctx.fillStyle = '#ffffff'
-            ctx.font = 'bold 18px system-ui, -apple-system, sans-serif'
+            ctx.font = 'bold 22px system-ui, -apple-system, sans-serif'
             ctx.textAlign = 'center'
-            ctx.fillText('$', iconX + iconSize / 2, iconY + 21)
+            ctx.fillText('$', iconX + iconSize / 2, iconY + 26)
             ctx.textAlign = 'left'
           }
 
           // Nombre del banco (desplazado para dejar espacio al ícono)
           ctx.fillStyle = '#1e293b'
-          ctx.font = '19px system-ui, -apple-system, sans-serif'
-          ctx.fillText(cuenta.banco, padding + iconSize + 12, y + 24)
+          ctx.font = '24px system-ui, -apple-system, sans-serif'
+          ctx.fillText(cuenta.banco, padding + iconSize + 14, y + 30)
 
           // Monto
           const monto = saldos[cuenta.id] || '0,00'
           const simbolo = esUSD ? 'USD ' : '$ '
           ctx.fillStyle = esUSD ? '#059669' : '#1e293b'
-          ctx.font = 'bold 22px system-ui, -apple-system, sans-serif'
+          ctx.font = 'bold 28px system-ui, -apple-system, sans-serif'
           ctx.textAlign = 'right'
-          ctx.fillText(simbolo + monto, width - padding, y + 24)
+          ctx.fillText(simbolo + monto, width - padding, y + 30)
           ctx.textAlign = 'left'
 
-          y += rowHeight - 10
+          y += rowHeight - 12
         })
 
         // Total de la empresa (NO mostrar para Cricnogap)
@@ -302,25 +302,25 @@ export default function SaldosBancariosPage() {
 
           // Texto
           ctx.fillStyle = config.text
-          ctx.font = 'bold 18px system-ui, -apple-system, sans-serif'
-          ctx.fillText('Total ' + EMPRESAS_CONFIG[empresaKey].nombre, padding, y + 26)
+          ctx.font = 'bold 22px system-ui, -apple-system, sans-serif'
+          ctx.fillText('Total ' + EMPRESAS_CONFIG[empresaKey].nombre, padding, y + 32)
 
-          ctx.font = 'bold 24px system-ui, -apple-system, sans-serif'
+          ctx.font = 'bold 30px system-ui, -apple-system, sans-serif'
           ctx.textAlign = 'right'
-          ctx.fillText(formatMoney(totalEmpresa), width - padding, y + 26)
+          ctx.fillText(formatMoney(totalEmpresa), width - padding, y + 32)
           ctx.textAlign = 'left'
 
           if (totalUSD > 0) {
             ctx.fillStyle = '#059669'
-            ctx.font = 'bold 18px system-ui, -apple-system, sans-serif'
+            ctx.font = 'bold 22px system-ui, -apple-system, sans-serif'
             ctx.textAlign = 'right'
-            ctx.fillText(formatMoney(totalUSD, 'USD'), width - padding, y + 46)
+            ctx.fillText(formatMoney(totalUSD, 'USD'), width - padding, y + 54)
             ctx.textAlign = 'left'
           }
 
-          y += rowHeight + 12
+          y += rowHeight + 14
         } else {
-          y += 12
+          y += 14
         }
       })
 
