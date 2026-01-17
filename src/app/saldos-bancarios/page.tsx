@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   ArrowLeft, Building2, Save, RefreshCw, Plus, Trash2,
-  Settings, ImageIcon, Landmark
+  Settings, Copy, Landmark, Check
 } from 'lucide-react'
 import Link from 'next/link'
 import NavRapida from '@/components/NavRapida'
@@ -29,11 +29,13 @@ const EMPRESAS_CONFIG = {
 
 export default function SaldosBancariosPage() {
   const [cuentas, setCuentas] = useState<CuentaBancaria[]>([])
-  const [saldos, setSaldos] = useState<Record<number, number>>({})
+  const [saldos, setSaldos] = useState<Record<number, string>>({}) // Guardamos como string para evitar problemas de input
+  const [saldoUSD, setSaldoUSD] = useState<string>('') // Saldo en USD para Cricnogap
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [mostrarConfig, setMostrarConfig] = useState(false)
   const [ultimaActualizacion, setUltimaActualizacion] = useState<Date | null>(null)
+  const [copiado, setCopiado] = useState(false)
 
   // Para agregar nueva cuenta
   const [nuevaCuenta, setNuevaCuenta] = useState({
@@ -62,12 +64,24 @@ export default function SaldosBancariosPage() {
     if (cuentasData) {
       setCuentas(cuentasData)
 
-      // Cargar saldos actuales
-      const saldosMap: Record<number, number> = {}
-      cuentasData.forEach((c: CuentaBancaria) => {
-        saldosMap[c.id] = (c as any).saldo_actual || 0
+      // Cargar saldos actuales como strings
+      const saldosMap: Record<number, string> = {}
+      cuentasData.forEach((c: any) => {
+        const saldo = c.saldo_actual || 0
+        saldosMap[c.id] = saldo > 0 ? saldo.toString() : ''
       })
       setSaldos(saldosMap)
+    }
+
+    // Cargar saldo USD de configuración
+    const { data: configUSD } = await supabase
+      .from('configuracion')
+      .select('valor')
+      .eq('clave', 'cricnogap_usd')
+      .single()
+
+    if (configUSD) {
+      setSaldoUSD(configUSD.valor || '')
     }
 
     setLoading(false)
@@ -78,11 +92,19 @@ export default function SaldosBancariosPage() {
 
     try {
       // Actualizar saldo_actual en cada cuenta
-      for (const [cuentaId, saldo] of Object.entries(saldos)) {
+      for (const [cuentaId, saldoStr] of Object.entries(saldos)) {
+        const saldo = parseFloat(saldoStr.replace(/\./g, '').replace(',', '.')) || 0
         await supabase
           .from('cuentas_bancarias')
           .update({ saldo_actual: saldo, updated_at: new Date().toISOString() })
           .eq('id', Number(cuentaId))
+      }
+
+      // Guardar saldo USD
+      if (saldoUSD) {
+        await supabase
+          .from('configuracion')
+          .upsert({ clave: 'cricnogap_usd', valor: saldoUSD })
       }
 
       setUltimaActualizacion(new Date())
@@ -140,7 +162,7 @@ export default function SaldosBancariosPage() {
     }
   }
 
-  async function exportarImagen() {
+  async function copiarAlPortapapeles() {
     if (!reporteRef.current) return
 
     try {
@@ -149,30 +171,44 @@ export default function SaldosBancariosPage() {
         scale: 2
       })
 
-      const link = document.createElement('a')
-      const fecha = new Date().toLocaleDateString('es-AR').replace(/\//g, '-')
-      link.download = `saldos-bancarios-${fecha}.png`
-      link.href = canvas.toDataURL('image/png')
-      link.click()
+      canvas.toBlob(async (blob) => {
+        if (blob) {
+          try {
+            await navigator.clipboard.write([
+              new ClipboardItem({ 'image/png': blob })
+            ])
+            setCopiado(true)
+            setTimeout(() => setCopiado(false), 2000)
+          } catch (err) {
+            // Fallback: descargar si no se puede copiar
+            const link = document.createElement('a')
+            const fecha = new Date().toLocaleDateString('es-AR').replace(/\//g, '-')
+            link.download = `saldos-bancarios-${fecha}.png`
+            link.href = canvas.toDataURL('image/png')
+            link.click()
+            alert('No se pudo copiar al portapapeles. Se descargó la imagen.')
+          }
+        }
+      }, 'image/png')
     } catch (error) {
-      console.error('Error exportando imagen:', error)
-      alert('Error al exportar la imagen')
+      console.error('Error copiando imagen:', error)
+      alert('Error al copiar la imagen')
     }
   }
 
   function handleSaldoChange(cuentaId: number, valor: string) {
-    // Limpiar: solo números, punto y coma
-    let limpio = valor.replace(/[^\d.,]/g, '')
-
-    // Reemplazar coma por punto para el cálculo
-    limpio = limpio.replace(',', '.')
-
-    const numero = parseFloat(limpio) || 0
-
+    // Solo permitir números, puntos y comas
+    const limpio = valor.replace(/[^\d.,]/g, '')
     setSaldos(prev => ({
       ...prev,
-      [cuentaId]: numero
+      [cuentaId]: limpio
     }))
+  }
+
+  function parseSaldo(saldoStr: string): number {
+    if (!saldoStr) return 0
+    // Formato argentino: 1.234.567,89 -> 1234567.89
+    return parseFloat(saldoStr.replace(/\./g, '').replace(',', '.')) || 0
   }
 
   function formatMoney(amount: number) {
@@ -184,19 +220,23 @@ export default function SaldosBancariosPage() {
     }).format(amount)
   }
 
-  function formatInputValue(valor: number) {
-    if (!valor) return ''
-    return valor.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  function formatUSD(amount: number) {
+    return new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount)
   }
 
   // Calcular totales por empresa
   function calcularTotalEmpresa(empresa: string) {
     return cuentas
       .filter(c => c.empresa === empresa)
-      .reduce((sum, c) => sum + (saldos[c.id] || 0), 0)
+      .reduce((sum, c) => sum + parseSaldo(saldos[c.id] || ''), 0)
   }
 
-  const totalGeneral = cuentas.reduce((sum, c) => sum + (saldos[c.id] || 0), 0)
+  const totalGeneral = cuentas.reduce((sum, c) => sum + parseSaldo(saldos[c.id] || ''), 0)
 
   // Agrupar cuentas por empresa
   const cuentasPorEmpresa = cuentas.reduce((acc, cuenta) => {
@@ -267,11 +307,24 @@ export default function SaldosBancariosPage() {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={exportarImagen}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg font-medium transition-colors"
+              onClick={copiarAlPortapapeles}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                copiado
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-700 hover:bg-slate-800 text-white'
+              }`}
             >
-              <ImageIcon className="h-4 w-4" />
-              Exportar PNG
+              {copiado ? (
+                <>
+                  <Check className="h-4 w-4" />
+                  Copiado!
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4" />
+                  Copiar Imagen
+                </>
+              )}
             </button>
             <button
               onClick={guardarSaldos}
@@ -371,7 +424,7 @@ export default function SaldosBancariosPage() {
             {(['VH', 'VC', 'MEGA', 'CRICNOGAP'] as const).map((empresaKey) => {
               const config = EMPRESAS_CONFIG[empresaKey]
               const cuentasEmpresa = cuentasPorEmpresa[empresaKey] || []
-              if (cuentasEmpresa.length === 0) return null
+              if (cuentasEmpresa.length === 0 && empresaKey !== 'CRICNOGAP') return null
 
               const totalEmpresa = calcularTotalEmpresa(empresaKey)
 
@@ -403,14 +456,18 @@ export default function SaldosBancariosPage() {
                                 <span className="font-semibold text-slate-800">{cuenta.banco}</span>
                               </div>
                             </td>
-                            <td className="py-3 px-4 text-right border-b border-slate-100 w-52">
-                              <input
-                                type="text"
-                                value={formatInputValue(saldos[cuenta.id] || 0)}
-                                onChange={(e) => handleSaldoChange(cuenta.id, e.target.value)}
-                                className="w-full px-3 py-2 text-right font-bold text-lg border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                                placeholder="0,00"
-                              />
+                            <td className="py-3 px-4 text-right border-b border-slate-100 w-48">
+                              <div className="flex items-center justify-end gap-1">
+                                <span className="text-slate-500 text-sm">$</span>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={saldos[cuenta.id] || ''}
+                                  onChange={(e) => handleSaldoChange(cuenta.id, e.target.value)}
+                                  className="w-36 px-3 py-2 text-right font-bold text-lg border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                                  placeholder="0,00"
+                                />
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -427,6 +484,26 @@ export default function SaldosBancariosPage() {
                       {formatMoney(totalEmpresa)}
                     </span>
                   </div>
+
+                  {/* Campo USD para Cricnogap */}
+                  {empresaKey === 'CRICNOGAP' && (
+                    <div className="flex items-center justify-between py-3 px-4 mt-2 rounded-lg bg-green-50 border-2 border-green-300">
+                      <span className="font-bold text-lg text-green-800">
+                        Cricnogap USD
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-600 font-medium">USD</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={saldoUSD}
+                          onChange={(e) => setSaldoUSD(e.target.value.replace(/[^\d.,]/g, ''))}
+                          className="w-32 px-3 py-2 text-right font-bold text-lg border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white"
+                          placeholder="0,00"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}
