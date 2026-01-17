@@ -533,40 +533,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Columna VC - Villalba Cristino */}
-                <div>
-                  <h3 className="text-sm font-semibold text-emerald-700 mb-3 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    Villalba Cristino
-                  </h3>
-                  <div className="space-y-2">
-                    {facturasDestacadas
-                      .filter(d => d.factura?.empresa === 'VC')
-                      .map(d => (
-                        <div key={d.id} className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-100 group">
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium text-slate-800 text-sm truncate">{d.factura?.proveedores?.nombre}</p>
-                            <p className="text-xs text-slate-500">FC {d.factura?.numero} • {formatDate(d.factura?.fecha)}</p>
-                          </div>
-                          <div className="flex items-center gap-2 ml-2">
-                            <span className="font-bold text-emerald-700 tabular-nums whitespace-nowrap">{formatMoney(d.saldo_pendiente)}</span>
-                            <button
-                              onClick={(e) => toggleFacturaDestacada(d.factura_id, e)}
-                              className="p-1.5 text-amber-500 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-                              title="Quitar de destacados"
-                            >
-                              {Icons.x}
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    {facturasDestacadas.filter(d => d.factura?.empresa === 'VC').length === 0 && (
-                      <p className="text-sm text-slate-400 text-center py-4">Sin facturas ancladas</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Columna VH - Villalba Hermanos */}
+                {/* Columna VH - Villalba Hermanos (IZQUIERDA) */}
                 <div>
                   <h3 className="text-sm font-semibold text-blue-700 mb-3 flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-blue-500"></span>
@@ -594,6 +561,39 @@ export default function Dashboard() {
                         </div>
                       ))}
                     {facturasDestacadas.filter(d => d.factura?.empresa === 'VH').length === 0 && (
+                      <p className="text-sm text-slate-400 text-center py-4">Sin facturas ancladas</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Columna VC - Villalba Cristino (DERECHA) */}
+                <div>
+                  <h3 className="text-sm font-semibold text-emerald-700 mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    Villalba Cristino
+                  </h3>
+                  <div className="space-y-2">
+                    {facturasDestacadas
+                      .filter(d => d.factura?.empresa === 'VC')
+                      .map(d => (
+                        <div key={d.id} className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-100 group">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-slate-800 text-sm truncate">{d.factura?.proveedores?.nombre}</p>
+                            <p className="text-xs text-slate-500">FC {d.factura?.numero} • {formatDate(d.factura?.fecha)}</p>
+                          </div>
+                          <div className="flex items-center gap-2 ml-2">
+                            <span className="font-bold text-emerald-700 tabular-nums whitespace-nowrap">{formatMoney(d.saldo_pendiente)}</span>
+                            <button
+                              onClick={(e) => toggleFacturaDestacada(d.factura_id, e)}
+                              className="p-1.5 text-amber-500 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                              title="Quitar de destacados"
+                            >
+                              {Icons.x}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    {facturasDestacadas.filter(d => d.factura?.empresa === 'VC').length === 0 && (
                       <p className="text-sm text-slate-400 text-center py-4">Sin facturas ancladas</p>
                     )}
                   </div>
@@ -818,6 +818,14 @@ export default function Dashboard() {
                                   <tbody className="divide-y divide-slate-100 bg-white">
                                     {prov.facturas
                                       .filter(fc => filtroEmpresa === 'todos' || fc.empresa === filtroEmpresa)
+                                      .sort((a, b) => {
+                                        // Primero ordenar por empresa: VH antes que VC
+                                        if (a.empresa !== b.empresa) {
+                                          return a.empresa === 'VH' ? -1 : 1
+                                        }
+                                        // Luego por fecha: más antigua primero
+                                        return new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+                                      })
                                       .map((fc) => {
                                       const dias = getDiasAntiguedad(fc.fecha)
                                       const st = getAlertaStyle(dias)
