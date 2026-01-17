@@ -34,15 +34,15 @@ ON CONFLICT DO NOTHING;
 
 -- Villalba Cristino (VC)
 INSERT INTO cuentas_bancarias (banco, empresa, icono, orden, saldo_actual) VALUES
-('NBCH Cristino', 'VC', 'nbch.png', 1, 0),
-('Nación Cristino', 'VC', 'nacion.png', 2, 0),
-('Mercado Pago Cristino', 'VC', 'mercadopago.png', 3, 0)
+('NBCH', 'VC', 'nbch.png', 1, 0),
+('Nación', 'VC', 'nacion.png', 2, 0),
+('Mercado Pago', 'VC', 'mercadopago.png', 3, 0)
 ON CONFLICT DO NOTHING;
 
 -- Megamundo SA (MEGA)
 INSERT INTO cuentas_bancarias (banco, empresa, icono, orden, saldo_actual) VALUES
-('NBCH Mega SA', 'MEGA', 'nbch.png', 1, 0),
-('Mercado Pago Mega SA', 'MEGA', 'mercadopago.png', 2, 0)
+('NBCH', 'MEGA', 'nbch.png', 1, 0),
+('Mercado Pago', 'MEGA', 'mercadopago.png', 2, 0)
 ON CONFLICT DO NOTHING;
 
 -- Cricnogap SRL

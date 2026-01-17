@@ -165,7 +165,8 @@ export default function SaldosBancariosPage() {
 
       empresasActivas.forEach(empresaKey => {
         const ctas = cuentas.filter(c => c.empresa === empresaKey)
-        totalRows += ctas.length + 1 // +1 por el total
+        // Cricnogap no tiene fila de total
+        totalRows += ctas.length + (empresaKey === 'CRICNOGAP' ? 0 : 1)
       })
 
       const height = headerHeight + (totalRows * rowHeight) + padding * 2
@@ -236,11 +237,11 @@ export default function SaldosBancariosPage() {
           y += rowHeight - 6
         })
 
-        // Total de la empresa
-        const totalEmpresa = calcularTotalEmpresa(empresaKey)
-        const totalUSD = calcularTotalUSD(empresaKey)
+        // Total de la empresa (NO mostrar para Cricnogap)
+        if (!esCricnogap) {
+          const totalEmpresa = calcularTotalEmpresa(empresaKey)
+          const totalUSD = calcularTotalUSD(empresaKey)
 
-        if (!esCricnogap || ctas.length > 1) {
           // Fondo del total
           ctx.fillStyle = config.bg
           ctx.fillRect(padding - 5, y, width - padding * 2 + 10, rowHeight - 2)
@@ -644,26 +645,7 @@ export default function SaldosBancariosPage() {
                     </div>
                   )}
 
-                  {/* Para Cricnogap: mostrar totales separados si hay varias cuentas */}
-                  {esCricnogap && cuentasEmpresa.length > 1 && (
-                    <div className={`flex items-center justify-between py-2 px-3 mt-1 rounded-lg ${config.colorLight} border ${config.colorBorder}`}>
-                      <span className={`font-bold text-sm ${config.colorText}`}>
-                        Total {config.nombre}
-                      </span>
-                      <div className="text-right">
-                        {totalEmpresa > 0 && (
-                          <p className={`text-lg font-bold ${config.colorText}`}>
-                            {formatMoney(totalEmpresa)}
-                          </p>
-                        )}
-                        {totalUSD > 0 && (
-                          <p className="text-lg font-bold text-green-700">
-                            {formatMoney(totalUSD, 'USD')}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  {/* Cricnogap: NO mostrar total, solo las cuentas */}
                 </div>
               )
             })}
